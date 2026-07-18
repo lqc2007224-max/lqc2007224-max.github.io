@@ -4,11 +4,11 @@ import { notes, papers, profile, projects, recommendations, stats } from "../dat
 import { slugify } from "../utils/slug";
 
 const quickLinks = [
-  { label: "关于我", href: "/about/", tone: "teal", icon: "me" },
-  { label: "博客", href: "/blog/", tone: "violet", icon: "paper" },
-  { label: "作品", href: "/about/#projects", tone: "green", icon: "work" },
-  { label: "成长", href: "/about/#timeline", tone: "rose", icon: "note" },
-  { label: "联系", href: "/contact/", tone: "gold", icon: "contact" },
+  { label: "关于我", detail: "经历与方向", href: "/about/", tone: "teal", icon: "me" },
+  { label: "博客", detail: "论文和笔记", href: "/blog/", tone: "violet", icon: "paper" },
+  { label: "作品", detail: "项目档案", href: "/about/#projects", tone: "green", icon: "work" },
+  { label: "成长", detail: "时间线", href: "/about/#timeline", tone: "rose", icon: "note" },
+  { label: "联系", detail: "邮箱与账号", href: "/contact/", tone: "gold", icon: "contact" },
 ];
 
 ---
@@ -26,13 +26,14 @@ const quickLinks = [
     <div class="hero-center">
       <a class="tiny-pill reveal-item" href="/private/">Private knowledge base</a>
       <div class="identity-lockup reveal-item">
-        <img class="hero-avatar" src="/assets/avatar-console.svg" alt="个人站头像视觉" width="260" height="260" />
+        <img class="hero-avatar" src="/assets/avatar-chuluo.jpg" alt="个人站头像视觉" width="260" height="260" />
         <p class="hello">Hey, 我是 {profile.greetingName}</p>
         <h1>{profile.role}</h1>
         <p class="lead">{profile.bio}</p>
       </div>
       <form class="ask-box reveal-item" action="/blog/">
-        <input value="" placeholder="想看项目、论文、笔记和学习记录？" aria-label="站内探索入口" />
+        <span class="ask-prefix">Explore</span>
+        <input value="" placeholder="从项目、论文、笔记里找一点线索" aria-label="站内探索入口" />
         <button type="submit" aria-label="进入博客页"><span>→</span></button>
       </form>
       <div class="quick-grid reveal-item" aria-label="快捷入口">
@@ -40,7 +41,10 @@ const quickLinks = [
           quickLinks.map((item) => (
             <a class={`quick-tile ${item.tone}`} href={item.href}>
               <span class={`tile-icon icon-${item.icon}`} aria-hidden="true"></span>
-              <span>{item.label}</span>
+              <span class="quick-copy">
+                <strong>{item.label}</strong>
+                <small>{item.detail}</small>
+              </span>
             </a>
           ))
         }
