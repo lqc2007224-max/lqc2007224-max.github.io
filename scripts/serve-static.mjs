@@ -2,7 +2,7 @@ import { createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
-import { basename, dirname, extname, join, normalize, resolve } from "node:path";
+import { basename, dirname, extname, join, normalize, relative, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 
@@ -191,6 +191,42 @@ async function runBuild() {
     windowsHide: true,
     maxBuffer: 1024 * 1024 * 8,
   });
+}
+
+async function runGit(args) {
+  return execFileAsync("git", args, {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      HTTP_PROXY: process.env.HTTP_PROXY || "",
+      HTTPS_PROXY: process.env.HTTPS_PROXY || "",
+    },
+    windowsHide: true,
+    maxBuffer: 1024 * 1024 * 8,
+  });
+}
+
+function gitPath(filePath) {
+  return relative(projectRoot, filePath).replace(/\\/g, "/");
+}
+
+async function hasGitChanges(paths) {
+  const args = ["status", "--porcelain", "--", ...paths];
+  const { stdout } = await runGit(args);
+  return Boolean(stdout.trim());
+}
+
+async function commitAndPushContent({ title, paths, message }) {
+  const uniquePaths = [...new Set(paths.filter(Boolean))];
+  if (!uniquePaths.length) return { status: "skipped", message: "没有需要提交的内容。" };
+  await runGit(["add", "--", ...uniquePaths]);
+  if (!(await hasGitChanges(uniquePaths))) {
+    return { status: "skipped", message: "内容没有变化，无需推送。" };
+  }
+  const cleanTitle = String(title || "blog post").replace(/\s+/g, " ").slice(0, 80);
+  await runGit(["commit", "-m", message || `Publish blog post: ${cleanTitle}`]);
+  await runGit(["push", "origin", "master"]);
+  return { status: "pushed", message: "已提交并推送到 GitHub。" };
 }
 
 function decodeXml(value) {
@@ -414,7 +450,8 @@ async function handlePublish(request, response) {
 
     const blogDir = join(projectRoot, "src", "content", "blog");
     await mkdir(blogDir, { recursive: true });
-    await writeFile(join(blogDir, `${slug}.md`), markdown, "utf8");
+    const markdownPath = join(blogDir, `${slug}.md`);
+    await writeFile(markdownPath, markdown, "utf8");
 
     if (obsidianPath) {
       const resolvedObsidianPath = resolve(obsidianPath);
@@ -477,12 +514,24 @@ async function handlePublish(request, response) {
       rebuild = "done";
     }
 
+    let deploy = { status: "skipped", message: "本次没有推送到 GitHub。" };
+    if (payload.deploy !== false) {
+      const deployPaths = [gitPath(markdownPath)];
+      if (existsSync(assetPublicDir)) deployPaths.push(gitPath(assetPublicDir));
+      deploy = await commitAndPushContent({
+        title,
+        paths: deployPaths,
+        message: `Publish blog post: ${title.slice(0, 72)}`,
+      });
+    }
+
     json(response, 200, {
       ok: true,
       slug,
       href: `/blog/${slug}/`,
       markdownPath: `src/content/blog/${slug}.md`,
       rebuild,
+      deploy,
       post: getDbPost(slug),
     });
   } catch (error) {
@@ -496,14 +545,25 @@ async function handleDeletePost(request, response, slug) {
     const post = getDbPost(slug);
     db.prepare("DELETE FROM posts WHERE slug = ?").run(slug);
     db.prepare("DELETE FROM comments WHERE post_slug = ?").run(slug);
-    await rm(join(projectRoot, "src", "content", "blog", `${slug}.md`), { force: true });
+    const markdownPath = join(projectRoot, "src", "content", "blog", `${slug}.md`);
+    const assetPublicDir = join(publicRoot, "assets", "blog", slug);
+    await rm(markdownPath, { force: true });
+    await rm(assetPublicDir, { recursive: true, force: true });
 
     let rebuild = "skipped";
     if (post) {
       await runBuild();
       rebuild = "done";
     }
-    json(response, 200, { ok: true, slug, rebuild });
+    let deploy = { status: "skipped", message: "本次没有推送到 GitHub。" };
+    if (post) {
+      deploy = await commitAndPushContent({
+        title: post.title,
+        paths: [gitPath(markdownPath), gitPath(assetPublicDir)],
+        message: `Remove blog post: ${post.title.slice(0, 72)}`,
+      });
+    }
+    json(response, 200, { ok: true, slug, rebuild, deploy });
   } catch (error) {
     json(response, 500, { error: error.message || "删除失败。" });
   }

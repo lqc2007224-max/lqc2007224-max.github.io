@@ -9,8 +9,8 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         <p class="eyebrow">Local Studio</p>
         <h1>写博客，发布到网站和 Obsidian。</h1>
         <p>
-          现在后台会把文章写入 SQLite 数据库，也会同步生成博客 Markdown。以后部署到服务器后，
-          这里就是你真正在线管理文章、评论和草稿的入口。
+          现在后台会把文章写入 SQLite 数据库，生成博客 Markdown，并自动推送到 GitHub 触发线上部署。
+          只有填对后台 Token 才能上传、发布、编辑和删除。
         </p>
       </div>
       <aside>
@@ -91,7 +91,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         </label>
 
         <div class="admin-actions">
-          <button class="button" type="submit">发布并重建</button>
+          <button class="button" type="submit">发布到线上</button>
           <button class="button secondary" type="button" data-save-draft>保存本地草稿</button>
           <button class="button secondary" type="button" data-clear>清空</button>
         </div>
@@ -396,7 +396,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
             .join("")
         : `<div class="admin-empty">
             <strong>数据库里还没有文章</strong>
-            <p>导入 Word 或直接写 Markdown，然后点击发布，第一篇文章会出现在这里。</p>
+          <p>导入 Word 或直接写 Markdown，然后发布到线上，文章会出现在这里。</p>
           </div>`;
     };
 
@@ -563,7 +563,8 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         assets.splice(0, assets.length);
         coverAsset = null;
         localStorage.removeItem("blog-admin-draft");
-        setState(`Word 已上传发布：${publishResult.href}`);
+        const deployText = publishResult.deploy?.status === "pushed" ? "已推送 GitHub" : publishResult.deploy?.message || "已生成";
+        setState(`Word 已发布：${publishResult.href}，${deployText}`);
         await loadPosts();
       } catch (error) {
         setState(error instanceof Error ? error.message : "Word 上传发布失败");
@@ -625,12 +626,12 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         if (!requireAdminToken()) return;
         const slug = deleteButton.dataset.deletePost || "";
         if (!slug || !window.confirm(`确定删除 ${slug} 吗？这会同步删除生成的博客页面。`)) return;
-        setState("正在删除文章");
+        setState("正在删除文章并同步线上");
         try {
           await requestJson(`/api/admin/posts/${encodeURIComponent(slug)}`, { method: "DELETE" });
           if (currentSlug === slug) clearEditor();
           else await loadPosts();
-          setState("文章已删除");
+          setState("文章已删除，线上正在同步");
         } catch (error) {
           setState(error instanceof Error ? error.message : "删除失败");
         }
@@ -642,7 +643,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       if (!(titleInput instanceof HTMLInputElement) || !(bodyInput instanceof HTMLTextAreaElement)) return;
       if (!requireBackendApi() || !requireAdminToken()) return;
       rememberAdminToken();
-      setState("正在发布");
+      setState("正在发布并推送 GitHub");
       const payload = buildPublishPayload();
       if (!payload) return;
       let result;
@@ -657,7 +658,8 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       currentCoverPath = result.post?.coverPath || currentCoverPath;
       assets.splice(0, assets.length);
       coverAsset = null;
-      setState(`已发布：${result.href}`);
+      const deployText = result.deploy?.status === "pushed" ? "已推送 GitHub" : result.deploy?.message || "已生成";
+      setState(`已发布：${result.href}，${deployText}`);
       loadPosts();
     });
 
