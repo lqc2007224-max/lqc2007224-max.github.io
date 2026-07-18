@@ -5576,6 +5576,13 @@ p {
   font-weight: 900;
 }
 
+.admin-import-primary span {
+  border-color: rgba(22, 134, 127, 0.28);
+  background: #16867f;
+  color: white;
+  box-shadow: 0 12px 28px rgba(22, 134, 127, 0.18);
+}
+
 .admin-import input {
   position: absolute;
   inset: 0;

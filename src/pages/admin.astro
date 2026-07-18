@@ -27,8 +27,12 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         <div class="admin-toolbar">
           <button class="admin-tool-button" type="button" data-new-post>新文章</button>
           <label class="admin-import">
-            <span>导入 Word</span>
+            <span>导入 Word 编辑</span>
             <input type="file" accept=".docx" data-docx-input />
+          </label>
+          <label class="admin-import admin-import-primary">
+            <span>上传 Word 并发布</span>
+            <input type="file" accept=".docx" data-docx-publish-input />
           </label>
           <label class="admin-import">
             <span>插入图片</span>
@@ -133,6 +137,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     const bodyInput = document.querySelector("[data-body]");
     const obsidianInput = document.querySelector("[data-obsidian-path]");
     const docxInput = document.querySelector("[data-docx-input]");
+    const docxPublishInput = document.querySelector("[data-docx-publish-input]");
     const imageInput = document.querySelector("[data-image-input]");
     const coverInput = document.querySelector("[data-cover-input]");
     const saveDraftButton = document.querySelector("[data-save-draft]");
@@ -308,6 +313,21 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       };
     };
 
+    const importDocxFile = async (file) => {
+      let result;
+      if (!isGithubPages) {
+        try {
+          const dataUrl = await fileToBase64(file);
+          result = await postJson("/api/admin/import-docx", { fileName: file.name, dataUrl });
+        } catch {
+          result = await importDocxInBrowser(file);
+        }
+      } else {
+        result = await importDocxInBrowser(file);
+      }
+      return result;
+    };
+
     const escapeHtml = (value) =>
       String(value).replace(/[&<>"']/g, (char) => ({
         "&": "&amp;",
@@ -414,6 +434,24 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       loadPosts();
     };
 
+    const buildPublishPayload = () => {
+      if (!(titleInput instanceof HTMLInputElement) || !(bodyInput instanceof HTMLTextAreaElement)) return null;
+      return {
+        slug: currentSlug,
+        title: titleInput.value,
+        summary: summaryInput instanceof HTMLInputElement ? summaryInput.value : "",
+        category: categoryInput instanceof HTMLSelectElement ? categoryInput.value : "研究日志",
+        tags: tagsInput instanceof HTMLInputElement ? tagsInput.value.split(/[,，\s]+/).filter(Boolean) : [],
+        status: statusInput instanceof HTMLSelectElement ? statusInput.value : "published",
+        body: bodyInput.value,
+        obsidianPath: obsidianInput instanceof HTMLInputElement ? obsidianInput.value : "",
+        assets,
+        cover: coverAsset,
+        coverPath: currentCoverPath,
+        rebuild: true,
+      };
+    };
+
     const updatePreview = () => {
       const tags = tagsInput instanceof HTMLInputElement ? tagsInput.value.split(/[,，\s]+/).filter(Boolean) : [];
       if (previewTitle) previewTitle.textContent = titleInput instanceof HTMLInputElement && titleInput.value ? titleInput.value : "还没有标题";
@@ -464,17 +502,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       if (!file) return;
       setState("正在导入 Word");
       try {
-        let result;
-        if (!isGithubPages) {
-          try {
-            const dataUrl = await fileToBase64(file);
-            result = await postJson("/api/admin/import-docx", { fileName: file.name, dataUrl });
-          } catch {
-            result = await importDocxInBrowser(file);
-          }
-        } else {
-          result = await importDocxInBrowser(file);
-        }
+        const result = await importDocxFile(file);
         if (titleInput instanceof HTMLInputElement && !titleInput.value) titleInput.value = result.title || file.name.replace(/\.docx$/i, "");
         if (bodyInput instanceof HTMLTextAreaElement) bodyInput.value = result.markdown || "";
         if (summaryInput instanceof HTMLInputElement && !summaryInput.value) summaryInput.value = result.summary || "";
@@ -483,6 +511,41 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       } catch (error) {
         setState(error instanceof Error ? error.message : "导入失败");
         return;
+      }
+    });
+
+    docxPublishInput?.addEventListener("change", async () => {
+      const file = docxPublishInput instanceof HTMLInputElement ? docxPublishInput.files?.[0] : null;
+      if (!file) return;
+      if (!requireBackendApi()) {
+        if (docxPublishInput instanceof HTMLInputElement) docxPublishInput.value = "";
+        return;
+      }
+      rememberAdminToken();
+      setState("正在上传 Word 并发布");
+      try {
+        clearEditor();
+        const result = await importDocxFile(file);
+        if (titleInput instanceof HTMLInputElement) titleInput.value = result.title || file.name.replace(/\.docx$/i, "");
+        if (bodyInput instanceof HTMLTextAreaElement) bodyInput.value = result.markdown || "";
+        if (summaryInput instanceof HTMLInputElement) summaryInput.value = result.summary || "";
+        if (statusInput instanceof HTMLSelectElement) statusInput.value = "published";
+        updatePreview();
+
+        const payload = buildPublishPayload();
+        if (!payload) throw new Error("编辑器没有准备好，无法发布。");
+        const publishResult = await postJson("/api/admin/publish", payload);
+        currentSlug = publishResult.slug || currentSlug;
+        currentCoverPath = publishResult.post?.coverPath || currentCoverPath;
+        assets.splice(0, assets.length);
+        coverAsset = null;
+        localStorage.removeItem("blog-admin-draft");
+        setState(`Word 已上传发布：${publishResult.href}`);
+        await loadPosts();
+      } catch (error) {
+        setState(error instanceof Error ? error.message : "Word 上传发布失败");
+      } finally {
+        if (docxPublishInput instanceof HTMLInputElement) docxPublishInput.value = "";
       }
     });
 
@@ -555,20 +618,8 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       if (!requireBackendApi()) return;
       rememberAdminToken();
       setState("正在发布");
-      const payload = {
-        slug: currentSlug,
-        title: titleInput.value,
-        summary: summaryInput instanceof HTMLInputElement ? summaryInput.value : "",
-        category: categoryInput instanceof HTMLSelectElement ? categoryInput.value : "研究日志",
-        tags: tagsInput instanceof HTMLInputElement ? tagsInput.value.split(/[,，\s]+/).filter(Boolean) : [],
-        status: statusInput instanceof HTMLSelectElement ? statusInput.value : "published",
-        body: bodyInput.value,
-        obsidianPath: obsidianInput instanceof HTMLInputElement ? obsidianInput.value : "",
-        assets,
-        cover: coverAsset,
-        coverPath: currentCoverPath,
-        rebuild: true,
-      };
+      const payload = buildPublishPayload();
+      if (!payload) return;
       let result;
       try {
         result = await postJson("/api/admin/publish", payload);
