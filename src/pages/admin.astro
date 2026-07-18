@@ -131,10 +131,10 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       if (state) state.textContent = value;
     };
 
-    const requireLocalApi = () => {
+    const requireLocalPublishApi = () => {
       if (isLocalWritingHost) return true;
-      setState("在线静态预览：不能导入或发布");
-      window.alert("Word 导入和发布写入需要本地服务支持。请打开本地预览地址，例如 http://127.0.0.1:4325/admin/。");
+      setState("在线静态预览：不能发布写入");
+      window.alert("发布写入需要本地服务支持。请打开本地预览地址，例如 http://127.0.0.1:4325/admin/。");
       return false;
     };
 
@@ -171,6 +171,99 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
+
+    const decodeXml = (value) =>
+      String(value || "")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&")
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'");
+
+    const readUint16 = (view, offset) => view.getUint16(offset, true);
+    const readUint32 = (view, offset) => view.getUint32(offset, true);
+
+    const inflateRaw = async (bytes) => {
+      if (!("DecompressionStream" in window)) {
+        throw new Error("当前浏览器不支持静态解压 Word 文档，请改用本地后台服务。");
+      }
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    };
+
+    const readZipEntry = async (buffer, entryName) => {
+      const view = new DataView(buffer);
+      const bytes = new Uint8Array(buffer);
+      let endOffset = -1;
+      for (let offset = bytes.length - 22; offset >= 0; offset -= 1) {
+        if (readUint32(view, offset) === 0x06054b50) {
+          endOffset = offset;
+          break;
+        }
+      }
+      if (endOffset < 0) throw new Error("没有找到 Word 文档目录。");
+
+      const totalEntries = readUint16(view, endOffset + 10);
+      let centralOffset = readUint32(view, endOffset + 16);
+      const decoder = new TextDecoder("utf-8");
+
+      for (let index = 0; index < totalEntries; index += 1) {
+        if (readUint32(view, centralOffset) !== 0x02014b50) break;
+        const method = readUint16(view, centralOffset + 10);
+        const compressedSize = readUint32(view, centralOffset + 20);
+        const fileNameLength = readUint16(view, centralOffset + 28);
+        const extraLength = readUint16(view, centralOffset + 30);
+        const commentLength = readUint16(view, centralOffset + 32);
+        const localOffset = readUint32(view, centralOffset + 42);
+        const name = decoder.decode(bytes.slice(centralOffset + 46, centralOffset + 46 + fileNameLength));
+
+        if (name === entryName) {
+          if (readUint32(view, localOffset) !== 0x04034b50) throw new Error("Word 文档局部目录损坏。");
+          const localNameLength = readUint16(view, localOffset + 26);
+          const localExtraLength = readUint16(view, localOffset + 28);
+          const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+          const compressed = bytes.slice(dataStart, dataStart + compressedSize);
+          if (method === 0) return compressed;
+          if (method === 8) return inflateRaw(compressed);
+          throw new Error("暂不支持这个 Word 文档的压缩格式。");
+        }
+
+        centralOffset += 46 + fileNameLength + extraLength + commentLength;
+      }
+
+      throw new Error("Word 文档里没有找到正文。");
+    };
+
+    const docxXmlToMarkdown = (xml) => {
+      const paragraphs = Array.from(String(xml || "").matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)).map((match) => match[0]);
+      const lines = [];
+      for (const paragraph of paragraphs) {
+        const text = decodeXml(
+          Array.from(paragraph.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g))
+            .map((match) => match[1])
+            .join(""),
+        ).trim();
+        if (!text) continue;
+        const style = /<w:pStyle[^>]*w:val="([^"]+)"/.exec(paragraph)?.[1] || "";
+        if (/Heading1|Title/i.test(style)) lines.push(`# ${text}`);
+        else if (/Heading2/i.test(style)) lines.push(`## ${text}`);
+        else if (/Heading3/i.test(style)) lines.push(`### ${text}`);
+        else lines.push(text);
+      }
+      return lines.join("\n\n");
+    };
+
+    const importDocxInBrowser = async (file) => {
+      const xmlBytes = await readZipEntry(await file.arrayBuffer(), "word/document.xml");
+      const markdown = docxXmlToMarkdown(new TextDecoder("utf-8").decode(xmlBytes));
+      if (!markdown.trim()) throw new Error("Word 文档导入成功，但没有提取到正文文字。");
+      const firstParagraph = markdown.split(/\r?\n/).find((line) => line.trim() && !line.startsWith("#")) || "";
+      return {
+        title: file.name.replace(/\.docx$/i, ""),
+        summary: firstParagraph.slice(0, 120),
+        markdown,
+      };
+    };
 
     const escapeHtml = (value) =>
       String(value).replace(/[&<>"']/g, (char) => ({
@@ -258,14 +351,19 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     docxInput?.addEventListener("change", async () => {
       const file = docxInput instanceof HTMLInputElement ? docxInput.files?.[0] : null;
       if (!file) return;
-      if (!requireLocalApi()) {
-        if (docxInput instanceof HTMLInputElement) docxInput.value = "";
-        return;
-      }
       setState("正在导入 Word");
       try {
-        const dataUrl = await fileToBase64(file);
-        const result = await postJson("/api/admin/import-docx", { fileName: file.name, dataUrl });
+        let result;
+        if (isLocalWritingHost) {
+          try {
+            const dataUrl = await fileToBase64(file);
+            result = await postJson("/api/admin/import-docx", { fileName: file.name, dataUrl });
+          } catch {
+            result = await importDocxInBrowser(file);
+          }
+        } else {
+          result = await importDocxInBrowser(file);
+        }
         if (titleInput instanceof HTMLInputElement && !titleInput.value) titleInput.value = result.title || file.name.replace(/\.docx$/i, "");
         if (bodyInput instanceof HTMLTextAreaElement) bodyInput.value = result.markdown || "";
         if (summaryInput instanceof HTMLInputElement && !summaryInput.value) summaryInput.value = result.summary || "";
@@ -313,7 +411,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     form?.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!(titleInput instanceof HTMLInputElement) || !(bodyInput instanceof HTMLTextAreaElement)) return;
-      if (!requireLocalApi()) return;
+      if (!requireLocalPublishApi()) return;
       setState("正在发布");
       const payload = {
         title: titleInput.value,
@@ -341,7 +439,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     loadDraft();
     updatePreview();
     if (!isLocalWritingHost) {
-      setState("在线静态预览：只能写草稿");
+      setState("在线静态预览：可导入和写草稿");
     }
   </script>
 </BaseLayout>
