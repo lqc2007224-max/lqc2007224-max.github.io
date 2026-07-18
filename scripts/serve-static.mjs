@@ -2,7 +2,7 @@ import { createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
-import { basename, dirname, extname, join, normalize, relative, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 
@@ -10,11 +10,15 @@ const execFileAsync = promisify(execFile);
 const projectRoot = resolve(".");
 const root = resolve("dist");
 const publicRoot = resolve("public");
-const desktopRoot = resolve("C:\\Users\\23676\\Desktop");
+const workspaceRoot = resolve(
+  process.env.WORKSPACE_ROOT || (process.platform === "win32" ? "C:\\Users\\23676\\Desktop" : projectRoot),
+);
+const obsidianDefaultPath = resolve(process.env.OBSIDIAN_PATH || join(workspaceRoot, "obsidian", "Blog"));
 const dataRoot = resolve(".data");
 const port = Number.parseInt(process.env.PORT || "4321", 10);
 const host = process.env.HOST || "127.0.0.1";
 const adminToken = String(process.env.ADMIN_TOKEN || "").trim();
+const enableGitDeploy = String(process.env.GIT_DEPLOY || "1").trim() !== "0";
 
 mkdirSync(dataRoot, { recursive: true });
 const db = new DatabaseSync(join(dataRoot, "cms.sqlite"));
@@ -113,6 +117,11 @@ function buildMarkdown({ title, slug, summary, category, status, tags, coverPath
 function isLocalRequest(request) {
   const remote = request.socket.remoteAddress || "";
   return remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
+}
+
+function isSubPath(parentPath, targetPath) {
+  const relation = relative(parentPath, targetPath);
+  return relation === "" || (!relation.startsWith("..") && !isAbsolute(relation));
 }
 
 function requireAdmin(request, response) {
@@ -434,7 +443,7 @@ async function handlePublish(request, response) {
 
     const now = new Date().toISOString();
     const publishedAt = existing?.publishedAt || now.slice(0, 10);
-    const obsidianPath = String(payload.obsidianPath || existing?.obsidianPath || join(desktopRoot, "obsidian", "Blog")).trim();
+    const obsidianPath = String(payload.obsidianPath || existing?.obsidianPath || obsidianDefaultPath).trim();
 
     const markdown = buildMarkdown({
       title,
@@ -455,8 +464,8 @@ async function handlePublish(request, response) {
 
     if (obsidianPath) {
       const resolvedObsidianPath = resolve(obsidianPath);
-      if (!resolvedObsidianPath.startsWith(desktopRoot)) {
-        json(response, 400, { error: "为了安全，Obsidian 同步目录必须在桌面目录下。" });
+      if (!isSubPath(workspaceRoot, resolvedObsidianPath)) {
+        json(response, 400, { error: "为了安全，Obsidian 同步目录必须在允许的工作目录下。" });
         return;
       }
       await mkdir(resolvedObsidianPath, { recursive: true });
@@ -515,7 +524,7 @@ async function handlePublish(request, response) {
     }
 
     let deploy = { status: "skipped", message: "本次没有推送到 GitHub。" };
-    if (payload.deploy !== false) {
+    if (payload.deploy !== false && enableGitDeploy) {
       const deployPaths = [gitPath(markdownPath)];
       if (existsSync(assetPublicDir)) deployPaths.push(gitPath(assetPublicDir));
       deploy = await commitAndPushContent({
@@ -523,6 +532,8 @@ async function handlePublish(request, response) {
         paths: deployPaths,
         message: `Publish blog post: ${title.slice(0, 72)}`,
       });
+    } else if (payload.deploy !== false) {
+      deploy = { status: "skipped", message: "服务器模式已直接更新线上内容，未执行 GitHub 推送。" };
     }
 
     json(response, 200, {
@@ -556,12 +567,14 @@ async function handleDeletePost(request, response, slug) {
       rebuild = "done";
     }
     let deploy = { status: "skipped", message: "本次没有推送到 GitHub。" };
-    if (post) {
+    if (post && enableGitDeploy) {
       deploy = await commitAndPushContent({
         title: post.title,
         paths: [gitPath(markdownPath), gitPath(assetPublicDir)],
         message: `Remove blog post: ${post.title.slice(0, 72)}`,
       });
+    } else if (post) {
+      deploy = { status: "skipped", message: "服务器模式已直接更新线上内容，未执行 GitHub 推送。" };
     }
     json(response, 200, { ok: true, slug, rebuild, deploy });
   } catch (error) {

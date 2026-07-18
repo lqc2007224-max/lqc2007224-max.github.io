@@ -1,0 +1,17 @@
+[Unit]
+Description=Chu Luo personal blog studio
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/personal-blog-studio
+EnvironmentFile=/var/www/personal-blog-studio/.env.production
+ExecStart=/usr/bin/node --env-file=/var/www/personal-blog-studio/.env.production /var/www/personal-blog-studio/scripts/serve-static.mjs
+Restart=always
+RestartSec=5
+User=www-data
+Group=www-data
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
