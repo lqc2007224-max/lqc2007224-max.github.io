@@ -125,9 +125,36 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     const previewBody = document.querySelector("[data-preview-body]");
     const assets = [];
     let coverAsset = null;
+    const isLocalWritingHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
     const setState = (value) => {
       if (state) state.textContent = value;
+    };
+
+    const requireLocalApi = () => {
+      if (isLocalWritingHost) return true;
+      setState("在线静态预览：不能导入或发布");
+      window.alert("Word 导入和发布写入需要本地服务支持。请打开本地预览地址，例如 http://127.0.0.1:4325/admin/。");
+      return false;
+    };
+
+    const postJson = async (url, payload) => {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const text = await response.text();
+      let result = {};
+      try {
+        result = text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error("后台接口没有返回 JSON。请确认你打开的是本地后台服务，不是 GitHub Pages 静态页面。");
+      }
+      if (!response.ok) {
+        throw new Error(result.error || "操作失败。");
+      }
+      return result;
     };
 
     const slugify = (value) =>
@@ -231,23 +258,23 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     docxInput?.addEventListener("change", async () => {
       const file = docxInput instanceof HTMLInputElement ? docxInput.files?.[0] : null;
       if (!file) return;
-      setState("正在导入 Word");
-      const dataUrl = await fileToBase64(file);
-      const response = await fetch("/api/admin/import-docx", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName: file.name, dataUrl }),
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        setState(result.error || "导入失败");
+      if (!requireLocalApi()) {
+        if (docxInput instanceof HTMLInputElement) docxInput.value = "";
         return;
       }
-      if (titleInput instanceof HTMLInputElement && !titleInput.value) titleInput.value = result.title || file.name.replace(/\.docx$/i, "");
-      if (bodyInput instanceof HTMLTextAreaElement) bodyInput.value = result.markdown || "";
-      if (summaryInput instanceof HTMLInputElement && !summaryInput.value) summaryInput.value = result.summary || "";
-      setState("Word 已导入");
-      updatePreview();
+      setState("正在导入 Word");
+      try {
+        const dataUrl = await fileToBase64(file);
+        const result = await postJson("/api/admin/import-docx", { fileName: file.name, dataUrl });
+        if (titleInput instanceof HTMLInputElement && !titleInput.value) titleInput.value = result.title || file.name.replace(/\.docx$/i, "");
+        if (bodyInput instanceof HTMLTextAreaElement) bodyInput.value = result.markdown || "";
+        if (summaryInput instanceof HTMLInputElement && !summaryInput.value) summaryInput.value = result.summary || "";
+        setState("Word 已导入");
+        updatePreview();
+      } catch (error) {
+        setState(error instanceof Error ? error.message : "导入失败");
+        return;
+      }
     });
 
     imageInput?.addEventListener("change", async () => {
@@ -286,6 +313,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     form?.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!(titleInput instanceof HTMLInputElement) || !(bodyInput instanceof HTMLTextAreaElement)) return;
+      if (!requireLocalApi()) return;
       setState("正在发布");
       const payload = {
         title: titleInput.value,
@@ -299,14 +327,11 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         cover: coverAsset,
         rebuild: true,
       };
-      const response = await fetch("/api/admin/publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        setState(result.error || "发布失败");
+      let result;
+      try {
+        result = await postJson("/api/admin/publish", payload);
+      } catch (error) {
+        setState(error instanceof Error ? error.message : "发布失败");
         return;
       }
       localStorage.removeItem("blog-admin-draft");
@@ -315,5 +340,8 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 
     loadDraft();
     updatePreview();
+    if (!isLocalWritingHost) {
+      setState("在线静态预览：只能写草稿");
+    }
   </script>
 </BaseLayout>

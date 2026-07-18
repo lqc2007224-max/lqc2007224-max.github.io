@@ -1,55 +1,124 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { getLocalBlogPosts } from "../utils/blog";
+
+const posts = getLocalBlogPosts();
+const categories = ["全部", ...new Set(posts.map((post) => post.category))];
+const coverClasses = ["cover-paper", "cover-blue", "cover-gold", "cover-teal", "cover-cyan", "cover-dark"];
 ---
 
 <BaseLayout title="博客">
-  <div class="diary-shell archive-page diary-archive blog-upload-page">
-    <section class="archive-hero archive-hero-row blog-upload-hero">
+  <div class="diary-shell archive-page diary-archive">
+    <section class="archive-hero archive-hero-row archive-hero-with-action">
       <div>
-        <p class="diary-kicker">Blog Studio</p>
-        <h1>先留一张干净的书桌，新的文章从这里开始。</h1>
+        <p class="diary-kicker">Blog / Papers & Notes</p>
+        <h1>这里以后只放你自己上传的文章。</h1>
         <p>
-          旧的博客列表先收起来。之后你可以把 Word、Markdown 或临时想法整理成文章，
-          再决定哪些内容公开，哪些继续留在自己的知识库里。
+          论文、笔记、项目复盘和日记都可以放进博客里，用分类和标签区分。当前旧内容已经清空，
+          后续内容从右上角的上传入口进入写作后台。
         </p>
       </div>
       <aside class="archive-ledger" aria-label="博客概览">
-        <span>00</span>
-        <strong>篇公开展示</strong>
-        <p>当前页面只保留发布入口，不再展示旧文章卡片。</p>
+        <span>{String(posts.length).padStart(2, "0")}</span>
+        <strong>篇公开文章</strong>
+        <p>内容入口保留，展示内容从你的上传开始。</p>
       </aside>
+      <a class="archive-upload-link" href="/admin/">上传</a>
     </section>
 
-    <section class="blog-upload-panel" aria-label="上传博客">
-      <div class="blog-upload-card">
-        <p class="eyebrow">Write / Import</p>
-        <h2>上传一篇新的博客</h2>
-        <p>
-          进入写作后台后，可以直接写 Markdown，也可以导入文档再整理。标题、分类、标签和摘要都可以在发布前调整。
-        </p>
-        <div class="blog-upload-actions">
-          <a class="button" href="/admin/">上传博客</a>
-          <a class="button secondary" href="/private/">先整理资料</a>
-        </div>
-      </div>
+    {
+      posts.length ? (
+        <>
+          <section class="archive-toolbar diary-toolbar" data-blog-scope>
+            <label class="archive-search">
+              <span class="sr-only">搜索博客</span>
+              <input data-blog-search type="search" placeholder="搜索标题、分类、关键词" aria-label="搜索博客" />
+            </label>
+            <div class="archive-filters" aria-label="博客分类筛选">
+              {categories.map((category, index) => (
+                <button class={index === 0 ? "active" : ""} type="button" data-blog-filter={category}>
+                  {category}
+                </button>
+              ))}
+            </div>
+          </section>
 
-      <div class="blog-upload-steps" aria-label="发布流程">
-        <div>
-          <span>01</span>
-          <strong>写下内容</strong>
-          <p>先把想法放进来，不急着修饰。</p>
-        </div>
-        <div>
-          <span>02</span>
-          <strong>补齐信息</strong>
-          <p>分类、标签和摘要决定别人怎么找到它。</p>
-        </div>
-        <div>
-          <span>03</span>
-          <strong>确认发布</strong>
-          <p>公开前再看一遍，留下真正想展示的部分。</p>
-        </div>
-      </div>
-    </section>
+          <section class="post-feed archive-feed" aria-label="博客文章列表">
+            {posts.map((post, index) => (
+              <article
+                class="feed-item diary-feed-item"
+                data-blog-card
+                data-category={post.category}
+                data-search={`${post.title} ${post.category} ${post.status} ${post.summary} ${post.tags.join(" ")}`}
+              >
+                <a class={`feed-cover ${coverClasses[index % coverClasses.length]}`} href={post.href} aria-label={`进入 ${post.title}`}>
+                  <span>{post.category}</span>
+                </a>
+                <div class="feed-body">
+                  <div class="feed-meta">
+                    <span>{post.date}</span>
+                    <span>{post.category}</span>
+                    <span>{post.status === "draft" ? "草稿" : "已发布"}</span>
+                  </div>
+                  <h2><a href={post.href}>{post.title}</a></h2>
+                  <p>{post.summary}</p>
+                  <div class="feed-tags">
+                    <span>{post.category}</span>
+                    {post.tags.map((tag) => <span>{tag}</span>)}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </section>
+
+          <p class="empty-state" data-blog-empty hidden>没有找到匹配文章，换个关键词或分类试试。</p>
+        </>
+      ) : (
+        <section class="content-empty-state">
+          <span>Empty</span>
+          <h2>暂时没有公开文章</h2>
+          <p>点击右上角的小上传入口，写下第一篇真正想公开的内容。</p>
+        </section>
+      )
+    }
   </div>
+
+  {
+    posts.length ? (
+      <script>
+        const blogScope = document.querySelector("[data-blog-scope]");
+        const blogCards = Array.from(document.querySelectorAll("[data-blog-card]"));
+        const blogSearch = document.querySelector("[data-blog-search]");
+        const blogButtons = Array.from(document.querySelectorAll("[data-blog-filter]"));
+        const blogEmpty = document.querySelector("[data-blog-empty]");
+        let activeBlogFilter = "全部";
+
+        const applyBlogFilters = () => {
+          const query = blogSearch instanceof HTMLInputElement ? blogSearch.value.toLowerCase().trim() : "";
+          let visibleCount = 0;
+          blogCards.forEach((card) => {
+            if (!(card instanceof HTMLElement)) return;
+            const category = card.dataset.category || "";
+            const text = (card.dataset.search || "").toLowerCase();
+            const visible =
+              (activeBlogFilter === "全部" || category.includes(activeBlogFilter)) &&
+              (!query || text.includes(query));
+            card.hidden = !visible;
+            if (visible) visibleCount += 1;
+          });
+          if (blogEmpty instanceof HTMLElement) blogEmpty.hidden = visibleCount > 0;
+        };
+
+        blogScope?.addEventListener("click", (event) => {
+          const button = event.target instanceof Element ? event.target.closest("[data-blog-filter]") : null;
+          if (!(button instanceof HTMLButtonElement)) return;
+          activeBlogFilter = button.dataset.blogFilter || "全部";
+          blogButtons.forEach((item) => item.classList.toggle("active", item === button));
+          applyBlogFilters();
+        });
+
+        blogSearch?.addEventListener("input", applyBlogFilters);
+      </script>
+    ) : null
+  }
 </BaseLayout>

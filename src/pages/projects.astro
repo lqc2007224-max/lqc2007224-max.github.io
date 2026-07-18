@@ -21,83 +21,97 @@ const coverClasses = ["cover-teal", "cover-cyan", "cover-blue", "cover-dark", "c
       <aside class="archive-ledger" aria-label="项目概览">
         <span>{String(projects.length).padStart(2, "0")}</span>
         <strong>个公开项目</strong>
-        <p>先保留 AI 生图文字研究和个人知识博客系统，其他项目暂时收起，后面需要时再恢复。</p>
+        <p>旧项目已清空，后续由你自己上传和发布。</p>
       </aside>
     </section>
 
-    <section class="archive-toolbar diary-toolbar" data-filter-scope>
-      <label class="archive-search">
-        <span class="sr-only">搜索项目</span>
-        <input data-card-search type="search" placeholder="搜索项目、技术栈、关键词" aria-label="搜索项目" />
-      </label>
-      <div class="archive-filters" aria-label="项目标签筛选">
-        <button class="active" type="button" data-filter="all">全部</button>
-        {projectTags.map((tag) => <button type="button" data-filter={tag}>{tag}</button>)}
-      </div>
-    </section>
-
-    <section class="post-feed archive-feed" aria-label="项目列表">
-      {
-        projects.map((project, index) => (
-          <article
-            class="feed-item diary-feed-item"
-            id={slugify(project.title)}
-            data-card
-            data-tags={project.tags.join(" ")}
-            data-search={`${project.title} ${project.status} ${project.summary} ${project.tags.join(" ")} ${project.problem} ${project.contribution}`}
-          >
-            <a class={`feed-cover ${coverClasses[index % coverClasses.length]}`} href={`/projects/${slugify(project.title)}/`} aria-label={`进入 ${project.title}`}>
-              <span>{project.status}</span>
-            </a>
-            <div class="feed-body">
-              <div class="feed-meta">
-                <span>{project.year}</span>
-                <span>{project.origin}</span>
-                <span>#{String(index + 1).padStart(2, "0")}</span>
-              </div>
-              <h2><a href={`/projects/${slugify(project.title)}/`}>{project.title}</a></h2>
-              <p>{project.summary}</p>
-              <p class="feed-note">{project.evidence}</p>
-              <div class="feed-tags">{project.tags.map((tag) => <span>{tag}</span>)}</div>
+    {
+      projects.length ? (
+        <>
+          <section class="archive-toolbar diary-toolbar" data-filter-scope>
+            <label class="archive-search">
+              <span class="sr-only">搜索项目</span>
+              <input data-card-search type="search" placeholder="搜索项目、技术栈、关键词" aria-label="搜索项目" />
+            </label>
+            <div class="archive-filters" aria-label="项目标签筛选">
+              <button class="active" type="button" data-filter="all">全部</button>
+              {projectTags.map((tag) => <button type="button" data-filter={tag}>{tag}</button>)}
             </div>
-          </article>
-        ))
-      }
-    </section>
+          </section>
 
-    <p class="empty-state" data-empty-state hidden>没有找到匹配项目，换个关键词或筛选条件试试。</p>
+          <section class="post-feed archive-feed" aria-label="项目列表">
+            {projects.map((project, index) => (
+              <article
+                class="feed-item diary-feed-item"
+                id={slugify(project.title)}
+                data-card
+                data-tags={project.tags.join(" ")}
+                data-search={`${project.title} ${project.status} ${project.summary} ${project.tags.join(" ")} ${project.problem} ${project.contribution}`}
+              >
+                <a class={`feed-cover ${coverClasses[index % coverClasses.length]}`} href={`/projects/${slugify(project.title)}/`} aria-label={`进入 ${project.title}`}>
+                  <span>{project.status}</span>
+                </a>
+                <div class="feed-body">
+                  <div class="feed-meta">
+                    <span>{project.year}</span>
+                    <span>{project.origin}</span>
+                    <span>#{String(index + 1).padStart(2, "0")}</span>
+                  </div>
+                  <h2><a href={`/projects/${slugify(project.title)}/`}>{project.title}</a></h2>
+                  <p>{project.summary}</p>
+                  <p class="feed-note">{project.evidence}</p>
+                  <div class="feed-tags">{project.tags.map((tag) => <span>{tag}</span>)}</div>
+                </div>
+              </article>
+            ))}
+          </section>
+
+          <p class="empty-state" data-empty-state hidden>没有找到匹配项目，换个关键词或筛选条件试试。</p>
+        </>
+      ) : (
+        <section class="content-empty-state">
+          <span>Empty</span>
+          <h2>暂时没有公开项目</h2>
+          <p>以后你上传作品集内容后，这里会成为项目入口。</p>
+        </section>
+      )
+    }
   </div>
 
-  <script>
-    const scope = document.querySelector("[data-filter-scope]");
-    const cards = Array.from(document.querySelectorAll("[data-card]"));
-    const searchInput = document.querySelector("[data-card-search]");
-    const filterButtons = Array.from(document.querySelectorAll("[data-filter]"));
-    const emptyState = document.querySelector("[data-empty-state]");
-    let activeFilter = "all";
+  {
+    projects.length ? (
+      <script>
+        const scope = document.querySelector("[data-filter-scope]");
+        const cards = Array.from(document.querySelectorAll("[data-card]"));
+        const searchInput = document.querySelector("[data-card-search]");
+        const filterButtons = Array.from(document.querySelectorAll("[data-filter]"));
+        const emptyState = document.querySelector("[data-empty-state]");
+        let activeFilter = "all";
 
-    const applyFilters = () => {
-      const query = searchInput instanceof HTMLInputElement ? searchInput.value.toLowerCase().trim() : "";
-      let visibleCount = 0;
-      cards.forEach((card) => {
-        if (!(card instanceof HTMLElement)) return;
-        const tags = card.dataset.tags || "";
-        const text = (card.dataset.search || "").toLowerCase();
-        const visible = (activeFilter === "all" || tags.includes(activeFilter)) && (!query || text.includes(query));
-        card.hidden = !visible;
-        if (visible) visibleCount += 1;
-      });
-      if (emptyState instanceof HTMLElement) emptyState.hidden = visibleCount > 0;
-    };
+        const applyFilters = () => {
+          const query = searchInput instanceof HTMLInputElement ? searchInput.value.toLowerCase().trim() : "";
+          let visibleCount = 0;
+          cards.forEach((card) => {
+            if (!(card instanceof HTMLElement)) return;
+            const tags = card.dataset.tags || "";
+            const text = (card.dataset.search || "").toLowerCase();
+            const visible = (activeFilter === "all" || tags.includes(activeFilter)) && (!query || text.includes(query));
+            card.hidden = !visible;
+            if (visible) visibleCount += 1;
+          });
+          if (emptyState instanceof HTMLElement) emptyState.hidden = visibleCount > 0;
+        };
 
-    scope?.addEventListener("click", (event) => {
-      const button = event.target instanceof Element ? event.target.closest("[data-filter]") : null;
-      if (!(button instanceof HTMLButtonElement)) return;
-      activeFilter = button.dataset.filter || "all";
-      filterButtons.forEach((item) => item.classList.toggle("active", item === button));
-      applyFilters();
-    });
+        scope?.addEventListener("click", (event) => {
+          const button = event.target instanceof Element ? event.target.closest("[data-filter]") : null;
+          if (!(button instanceof HTMLButtonElement)) return;
+          activeFilter = button.dataset.filter || "all";
+          filterButtons.forEach((item) => item.classList.toggle("active", item === button));
+          applyFilters();
+        });
 
-    searchInput?.addEventListener("input", applyFilters);
-  </script>
+        searchInput?.addEventListener("input", applyFilters);
+      </script>
+    ) : null
+  }
 </BaseLayout>

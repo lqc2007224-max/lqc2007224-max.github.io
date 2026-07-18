@@ -47,18 +47,26 @@ import { slugify } from "../utils/slug";
         <h2>项目和作品</h2>
         <p>这里保留目前公开的项目入口。后续如果项目成熟，再从这里进入更完整的案例页。</p>
       </div>
-      <div class="grid two">
-        {
-          projects.map((project) => (
-            <a class="card" href={`/projects/${slugify(project.title)}/`}>
-              <div class="card-meta"><span>{project.year}</span><span>{project.status}</span></div>
-              <h3>{project.title}</h3>
-              <p>{project.summary}</p>
-              <div class="tags">{project.tags.map((tag) => <span class="tag">{tag}</span>)}</div>
-            </a>
-          ))
-        }
-      </div>
+      {
+        projects.length ? (
+          <div class="grid two">
+            {projects.map((project) => (
+              <a class="card" href={`/projects/${slugify(project.title)}/`}>
+                <div class="card-meta"><span>{project.year}</span><span>{project.status}</span></div>
+                <h3>{project.title}</h3>
+                <p>{project.summary}</p>
+                <div class="tags">{project.tags.map((tag) => <span class="tag">{tag}</span>)}</div>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <section class="content-empty-state compact">
+            <span>Empty</span>
+            <h3>项目内容等待上传</h3>
+            <p>以后你自己发布项目内容后，这里会显示作品集入口。</p>
+          </section>
+        )
+      }
     </section>
 
     <section class="section" id="timeline">

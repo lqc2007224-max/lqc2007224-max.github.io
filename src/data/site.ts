@@ -241,11 +241,9 @@ const allProjects = [
   },
 ];
 
-export const projects = allProjects.filter((project) =>
-  ["GPT Image 2 中文文字渲染研究", "个人知识博客系统"].includes(project.title),
-);
+export const projects = [] as typeof allProjects;
 
-export const papers = [
+const allPapers = [
   {
     title: "FEPBench 与科学插图文本忠实度评测",
     venue: "Research Note",
@@ -341,7 +339,7 @@ export const papers = [
   },
 ];
 
-export const notes = [
+const allNotes = [
   {
     title: "ESP-Drone 两周学习路线",
     type: "学习计划",
@@ -402,6 +400,9 @@ export const notes = [
     ],
   },
 ];
+
+export const papers = [] as typeof allPapers;
+export const notes = [] as typeof allNotes;
 
 export const timeline = [
   {

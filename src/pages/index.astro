@@ -65,18 +65,26 @@ const quickLinks = [
         <h2>项目和作品集</h2>
         <p>把竞赛项目、研究尝试、工程工具和复盘统一整理成可阅读、可讨论、可继续扩展的作品集。</p>
       </div>
-      <div class="grid">
-        {
-          projects.slice(0, 5).map((project) => (
-            <a class="card" href={`/projects/${slugify(project.title)}/`}>
-              <div class="card-meta"><span>{project.year}</span><span>{project.status}</span></div>
-              <h3>{project.title}</h3>
-              <p>{project.summary}</p>
-              <div class="tags">{project.tags.map((tag) => <span class="tag">{tag}</span>)}</div>
-            </a>
-          ))
-        }
-      </div>
+      {
+        projects.length ? (
+          <div class="grid">
+            {projects.slice(0, 5).map((project) => (
+              <a class="card" href={`/projects/${slugify(project.title)}/`}>
+                <div class="card-meta"><span>{project.year}</span><span>{project.status}</span></div>
+                <h3>{project.title}</h3>
+                <p>{project.summary}</p>
+                <div class="tags">{project.tags.map((tag) => <span class="tag">{tag}</span>)}</div>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <section class="content-empty-state compact">
+            <span>Empty</span>
+            <h3>项目内容等待上传</h3>
+            <p>以后你发布作品集内容后，这里会出现项目入口。</p>
+          </section>
+        )
+      }
     </section>
 
     <section class="section split">
@@ -86,18 +94,26 @@ const quickLinks = [
         <p>每篇论文先抓核心问题，再写方法、实验和自己的判断；后续可以接入全文搜索和标签筛选。</p>
         <a class="button secondary" href="/blog/">进入博客</a>
       </div>
-      <div class="grid two">
-        {
-          papers.slice(0, 2).map((paper) => (
-            <a class="card" href={`/papers/${slugify(paper.title)}/`}>
-              <div class="card-meta"><span>{paper.venue}</span><span>{paper.status}</span></div>
-              <h3>{paper.title}</h3>
-              <p>{paper.takeaway}</p>
-              <div class="tags">{paper.tags.map((tag) => <span class="tag">{tag}</span>)}</div>
-            </a>
-          ))
-        }
-      </div>
+      {
+        papers.length ? (
+          <div class="grid two">
+            {papers.slice(0, 2).map((paper) => (
+              <a class="card" href={`/papers/${slugify(paper.title)}/`}>
+                <div class="card-meta"><span>{paper.venue}</span><span>{paper.status}</span></div>
+                <h3>{paper.title}</h3>
+                <p>{paper.takeaway}</p>
+                <div class="tags">{paper.tags.map((tag) => <span class="tag">{tag}</span>)}</div>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <section class="content-empty-state compact">
+            <span>Empty</span>
+            <h3>论文内容等待上传</h3>
+            <p>上传论文阅读或研究记录后，这里会显示最新条目。</p>
+          </section>
+        )
+      }
     </section>
 
     <section class="section split">
@@ -107,16 +123,24 @@ const quickLinks = [
           <h2>学习记录和随笔</h2>
           <p>短笔记、日记、方法论和研究想法都可以沉淀在这里。</p>
         </div>
-        <div class="timeline">
-          {
-            notes.map((note) => (
-              <a class="timeline-item" href={`/notes/${slugify(note.title)}/`}>
-                <time>{note.date}</time>
-                <div><h3>{note.title}</h3><p>{note.summary}</p></div>
-              </a>
-            ))
-          }
-        </div>
+        {
+          notes.length ? (
+            <div class="timeline">
+              {notes.map((note) => (
+                <a class="timeline-item" href={`/notes/${slugify(note.title)}/`}>
+                  <time>{note.date}</time>
+                  <div><h3>{note.title}</h3><p>{note.summary}</p></div>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <section class="content-empty-state compact">
+              <span>Empty</span>
+              <h3>笔记内容等待上传</h3>
+              <p>学习记录、日记和阶段性想法以后由你自己添加。</p>
+            </section>
+          )
+        }
       </div>
       <aside class="panel accent-teal">
         <p class="eyebrow">Next decisions</p>

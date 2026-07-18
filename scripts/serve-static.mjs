@@ -132,19 +132,27 @@ function parseRelationships(xml) {
 
 async function expandDocx(docxPath, extractDir) {
   const command = [
-    "& {",
-    "param($zipPath, $targetPath)",
     "$ErrorActionPreference = 'Stop';",
+    "$zipPath = $env:DOCX_ZIP_PATH;",
+    "$targetPath = $env:DOCX_EXTRACT_DIR;",
     "Add-Type -AssemblyName System.IO.Compression.FileSystem;",
     "if (Test-Path -LiteralPath $targetPath) { Remove-Item -LiteralPath $targetPath -Recurse -Force }",
     "New-Item -ItemType Directory -Path $targetPath -Force | Out-Null;",
     "[System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $targetPath);",
-    "}",
   ].join(" ");
-  await execFileAsync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command, docxPath, extractDir], {
-    windowsHide: true,
-    maxBuffer: 1024 * 1024 * 8,
-  });
+  await execFileAsync(
+    "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+    {
+      env: {
+        ...process.env,
+        DOCX_ZIP_PATH: docxPath,
+        DOCX_EXTRACT_DIR: extractDir,
+      },
+      windowsHide: true,
+      maxBuffer: 1024 * 1024 * 8,
+    },
+  );
 }
 
 async function findFileBySuffix(baseDir, suffix) {
@@ -178,15 +186,17 @@ async function handleImportDocx(request, response) {
     const baseTitle = fileName.replace(/\.docx$/i, "");
     const slug = slugify(baseTitle);
     const tempDir = join(projectRoot, ".tmp", `docx-${Date.now()}`);
-    const docxPath = join(tempDir, fileName);
+    const docxPath = join(tempDir, "source.docx");
     const extractDir = join(tempDir, "extract");
     await mkdir(tempDir, { recursive: true });
     await writeFile(docxPath, decodeDataUrl(payload.dataUrl).buffer);
     try {
       await expandDocx(docxPath, extractDir);
-    } catch {
+    } catch (error) {
       await rm(tempDir, { recursive: true, force: true });
-      json(response, 400, { error: "这个文件无法作为 Word 文档解压。请确认它是正常保存的 .docx，不是 .doc 或 ~$ 开头的临时文件。" });
+      json(response, 400, {
+        error: `这个文件无法作为 Word 文档解压：${error.stderr || error.message || "未知错误"}。请确认它是正常保存的 .docx，不是 .doc 或 ~$ 开头的临时文件。`,
+      });
       return;
     }
 
