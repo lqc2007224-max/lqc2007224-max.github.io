@@ -15,6 +15,7 @@ server-*.log
 
 # local temp files
 .tmp/
+.data/
 
 
 # environment variables

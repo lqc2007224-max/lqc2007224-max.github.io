@@ -5,12 +5,13 @@ interface Props {
   intro: string;
   labels: string[];
   placeholder: string;
+  postSlug?: string;
 }
 
-const { storageKey, title, intro, labels, placeholder } = Astro.props;
+const { storageKey, title, intro, labels, placeholder, postSlug = "" } = Astro.props;
 ---
 
-<section class="discussion-box thread-board" data-discussion-box data-storage-key={storageKey}>
+<section class="discussion-box thread-board" data-discussion-box data-storage-key={storageKey} data-post-slug={postSlug}>
   <div class="thread-head">
     <div>
       <p class="eyebrow">Comments</p>
@@ -62,12 +63,16 @@ const { storageKey, title, intro, labels, placeholder } = Astro.props;
   document.querySelectorAll("[data-discussion-box]").forEach((box) => {
     if (!(box instanceof HTMLElement)) return;
     const key = box.dataset.storageKey || "discussion";
+    const postSlug = box.dataset.postSlug || key.replace(/^discussion-blog-/, "");
     const form = box.querySelector("[data-discussion-form]");
     const list = box.querySelector("[data-discussion-list]");
     const count = box.querySelector("[data-discussion-count]");
     const copyButton = box.querySelector("[data-copy-discussion]");
 
-    const load = () => {
+    let apiMode = false;
+    let apiItems = [];
+
+    const loadLocal = () => {
       try {
         return JSON.parse(localStorage.getItem(key) || "[]");
       } catch {
@@ -75,8 +80,27 @@ const { storageKey, title, intro, labels, placeholder } = Astro.props;
       }
     };
 
-    const save = (items) => {
+    const saveLocal = (items) => {
       localStorage.setItem(key, JSON.stringify(items));
+    };
+
+    const load = () => (apiMode ? apiItems : loadLocal());
+
+    const refreshFromApi = async () => {
+      if (!postSlug || window.location.hostname.endsWith("github.io")) {
+        render();
+        return;
+      }
+      try {
+        const response = await fetch(`/api/comments?post=${encodeURIComponent(postSlug)}`);
+        if (!response.ok) throw new Error("comments api unavailable");
+        const result = await response.json();
+        apiItems = result.comments || [];
+        apiMode = true;
+      } catch {
+        apiMode = false;
+      }
+      render();
     };
 
     const escapeHtml = (value) =>
@@ -148,14 +172,13 @@ const { storageKey, title, intro, labels, placeholder } = Astro.props;
       return success;
     };
 
-    form?.addEventListener("submit", (event) => {
+    form?.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!(form instanceof HTMLFormElement)) return;
       const data = new FormData(form);
       const message = String(data.get("message") || "").trim();
       if (!message) return;
-      const items = load();
-      items.unshift({
+      const nextItem = {
         author: String(data.get("author") || "").trim() || "匿名访客",
         label: String(data.get("label") || "想法"),
         message,
@@ -165,8 +188,28 @@ const { storageKey, title, intro, labels, placeholder } = Astro.props;
           hour: "2-digit",
           minute: "2-digit",
         }),
-      });
-      save(items.slice(0, 80));
+      };
+      if (apiMode) {
+        try {
+          const response = await fetch("/api/comments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ postSlug, ...nextItem }),
+          });
+          if (!response.ok) throw new Error("comment api failed");
+          const result = await response.json();
+          apiItems.unshift(result.comment || nextItem);
+        } catch {
+          apiMode = false;
+          const items = loadLocal();
+          items.unshift(nextItem);
+          saveLocal(items.slice(0, 80));
+        }
+      } else {
+        const items = loadLocal();
+        items.unshift(nextItem);
+        saveLocal(items.slice(0, 80));
+      }
       form.reset();
       const firstLabel = form.querySelector('input[name="label"]');
       if (firstLabel instanceof HTMLInputElement) firstLabel.checked = true;
@@ -198,6 +241,6 @@ const { storageKey, title, intro, labels, placeholder } = Astro.props;
       }, 1400);
     });
 
-    render();
+    refreshFromApi();
   });
 </script>

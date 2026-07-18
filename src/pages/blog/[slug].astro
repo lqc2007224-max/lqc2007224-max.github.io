@@ -59,6 +59,7 @@ const { post } = Astro.props;
     <section id="discussion" class="diary-discussion-shell">
       <DiscussionBox
         storageKey={`discussion-blog-${post.slug}`}
+        postSlug={post.slug}
         title="聊聊这篇博客"
         intro="这里适合补充资料、指出问题、提出不同看法，或者继续延伸这个话题。"
         labels={["补充资料", "不同看法", "问题讨论", "继续交流"]}

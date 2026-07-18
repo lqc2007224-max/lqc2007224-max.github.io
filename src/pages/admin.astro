@@ -9,19 +9,23 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         <p class="eyebrow">Local Studio</p>
         <h1>写博客，发布到网站和 Obsidian。</h1>
         <p>
-          这是本地写作后台。你可以直接写 Markdown，也可以导入 Word 文档；发布后会生成博客 Markdown，
-          并同步一份到 Obsidian 的 Blog 文件夹。
+          现在后台会把文章写入 SQLite 数据库，也会同步生成博客 Markdown。以后部署到服务器后，
+          这里就是你真正在线管理文章、评论和草稿的入口。
         </p>
       </div>
       <aside>
         <strong data-admin-state>等待编辑</strong>
-        <span>建议用 `npm run build` 后通过本地预览服务打开。</span>
+        <label class="admin-token">
+          <span>后台 Token</span>
+          <input data-admin-token type="password" placeholder="本地可留空，服务器必填" />
+        </label>
       </aside>
     </section>
 
     <section class="admin-grid">
       <form class="admin-panel admin-editor" data-admin-form>
         <div class="admin-toolbar">
+          <button class="admin-tool-button" type="button" data-new-post>新文章</button>
           <label class="admin-import">
             <span>导入 Word</span>
             <input type="file" accept=".docx" data-docx-input />
@@ -89,15 +93,30 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         </div>
       </form>
 
-      <aside class="admin-panel admin-preview">
-        <div class="admin-preview-head">
-          <span data-preview-category>研究日志</span>
-          <time data-preview-date></time>
-        </div>
-        <h2 data-preview-title>还没有标题</h2>
-        <p data-preview-summary>摘要会显示在这里。</p>
-        <div class="admin-preview-tags" data-preview-tags></div>
-        <div class="admin-preview-body" data-preview-body></div>
+      <aside class="admin-side">
+        <section class="admin-panel admin-library">
+          <div class="admin-side-head">
+            <div>
+              <p class="eyebrow">Database</p>
+              <h2>文章库</h2>
+            </div>
+            <button type="button" data-refresh-posts>刷新</button>
+          </div>
+          <div class="admin-post-list" data-post-list>
+            <p class="admin-muted">正在读取数据库文章。</p>
+          </div>
+        </section>
+
+        <section class="admin-panel admin-preview">
+          <div class="admin-preview-head">
+            <span data-preview-category>研究日志</span>
+            <time data-preview-date></time>
+          </div>
+          <h2 data-preview-title>还没有标题</h2>
+          <p data-preview-summary>摘要会显示在这里。</p>
+          <div class="admin-preview-tags" data-preview-tags></div>
+          <div class="admin-preview-body" data-preview-body></div>
+        </section>
       </aside>
     </section>
   </div>
@@ -105,6 +124,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
   <script>
     const form = document.querySelector("[data-admin-form]");
     const state = document.querySelector("[data-admin-state]");
+    const tokenInput = document.querySelector("[data-admin-token]");
     const titleInput = document.querySelector("[data-title]");
     const summaryInput = document.querySelector("[data-summary]");
     const categoryInput = document.querySelector("[data-category]");
@@ -117,6 +137,9 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     const coverInput = document.querySelector("[data-cover-input]");
     const saveDraftButton = document.querySelector("[data-save-draft]");
     const clearButton = document.querySelector("[data-clear]");
+    const newPostButton = document.querySelector("[data-new-post]");
+    const refreshPostsButton = document.querySelector("[data-refresh-posts]");
+    const postList = document.querySelector("[data-post-list]");
     const previewTitle = document.querySelector("[data-preview-title]");
     const previewSummary = document.querySelector("[data-preview-summary]");
     const previewCategory = document.querySelector("[data-preview-category]");
@@ -125,24 +148,42 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     const previewBody = document.querySelector("[data-preview-body]");
     const assets = [];
     let coverAsset = null;
+    let currentSlug = "";
+    let currentCoverPath = "";
     const isLocalWritingHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+    const isGithubPages = window.location.hostname.endsWith("github.io");
 
     const setState = (value) => {
       if (state) state.textContent = value;
     };
 
-    const requireLocalPublishApi = () => {
-      if (isLocalWritingHost) return true;
-      setState("在线静态预览：不能发布写入");
-      window.alert("发布写入需要本地服务支持。请打开本地预览地址，例如 http://127.0.0.1:4325/admin/。");
+    const getAdminToken = () => {
+      if (tokenInput instanceof HTMLInputElement) return tokenInput.value.trim();
+      return localStorage.getItem("blog-admin-token") || "";
+    };
+
+    const rememberAdminToken = () => {
+      const value = getAdminToken();
+      if (value) localStorage.setItem("blog-admin-token", value);
+      else localStorage.removeItem("blog-admin-token");
+    };
+
+    const requireBackendApi = () => {
+      if (!isGithubPages) return true;
+      setState("GitHub Pages 不能写入数据库");
+      window.alert("当前 GitHub Pages 只能静态预览。要发布、编辑、删除和保存数据库，请打开本地后台或部署到服务器。");
       return false;
     };
 
-    const postJson = async (url, payload) => {
+    const requestJson = async (url, options = {}) => {
+      const headers = { ...(options.headers || {}) };
+      const token = getAdminToken();
+      if (token) headers["X-Admin-Token"] = token;
+      if (options.payload) headers["Content-Type"] = "application/json";
       const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        method: options.method || "GET",
+        headers,
+        body: options.payload ? JSON.stringify(options.payload) : undefined,
       });
       const text = await response.text();
       let result = {};
@@ -156,6 +197,8 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       }
       return result;
     };
+
+    const postJson = (url, payload) => requestJson(url, { method: "POST", payload });
 
     const slugify = (value) =>
       String(value || "untitled")
@@ -307,6 +350,70 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       return html || "<p>正文预览会显示在这里。</p>";
     };
 
+    const renderPostList = (posts = []) => {
+      if (!postList) return;
+      postList.innerHTML = posts.length
+        ? posts
+            .map((post) => `
+              <article class="admin-post-row ${post.slug === currentSlug ? "active" : ""}" data-post-slug="${escapeHtml(post.slug)}">
+                <button type="button" data-edit-post="${escapeHtml(post.slug)}">
+                  <span>${escapeHtml(post.category || "博客")} · ${escapeHtml(post.status === "draft" ? "草稿" : "已发布")}</span>
+                  <strong>${escapeHtml(post.title || post.slug)}</strong>
+                  <small>${escapeHtml((post.updatedAt || post.publishedAt || "").slice(0, 16).replace("T", " "))}</small>
+                </button>
+                <button class="danger" type="button" data-delete-post="${escapeHtml(post.slug)}">删除</button>
+              </article>
+            `)
+            .join("")
+        : `<div class="admin-empty">
+            <strong>数据库里还没有文章</strong>
+            <p>导入 Word 或直接写 Markdown，然后点击发布，第一篇文章会出现在这里。</p>
+          </div>`;
+    };
+
+    const loadPosts = async () => {
+      if (isGithubPages) {
+        renderPostList([]);
+        return;
+      }
+      try {
+        const result = await requestJson("/api/admin/posts");
+        renderPostList(result.posts || []);
+        setState(`数据库文章：${(result.posts || []).length} 篇`);
+      } catch (error) {
+        if (postList) postList.innerHTML = `<p class="admin-muted">${escapeHtml(error instanceof Error ? error.message : "文章库读取失败")}</p>`;
+      }
+    };
+
+    const applyPostToEditor = (post) => {
+      currentSlug = post.slug || "";
+      currentCoverPath = post.coverPath || "";
+      assets.splice(0, assets.length);
+      coverAsset = null;
+      if (titleInput instanceof HTMLInputElement) titleInput.value = post.title || "";
+      if (summaryInput instanceof HTMLInputElement) summaryInput.value = post.summary || "";
+      if (categoryInput instanceof HTMLSelectElement) categoryInput.value = post.category || "研究日志";
+      if (tagsInput instanceof HTMLInputElement) tagsInput.value = Array.isArray(post.tags) ? post.tags.join(", ") : "";
+      if (statusInput instanceof HTMLSelectElement) statusInput.value = post.status || "published";
+      if (bodyInput instanceof HTMLTextAreaElement) bodyInput.value = post.body || "";
+      if (obsidianInput instanceof HTMLInputElement) obsidianInput.value = post.obsidianPath || "";
+      setState(currentSlug ? `正在编辑：${currentSlug}` : "新文章");
+      updatePreview();
+    };
+
+    const clearEditor = () => {
+      form?.reset();
+      if (bodyInput instanceof HTMLTextAreaElement) bodyInput.value = "";
+      localStorage.removeItem("blog-admin-draft");
+      assets.splice(0, assets.length);
+      coverAsset = null;
+      currentSlug = "";
+      currentCoverPath = "";
+      setState("新文章");
+      updatePreview();
+      loadPosts();
+    };
+
     const updatePreview = () => {
       const tags = tagsInput instanceof HTMLInputElement ? tagsInput.value.split(/[,，\s]+/).filter(Boolean) : [];
       if (previewTitle) previewTitle.textContent = titleInput instanceof HTMLInputElement && titleInput.value ? titleInput.value : "还没有标题";
@@ -327,6 +434,8 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         status: statusInput instanceof HTMLSelectElement ? statusInput.value : "published",
         body: bodyInput.value,
         obsidianPath: obsidianInput instanceof HTMLInputElement ? obsidianInput.value : "",
+        slug: currentSlug,
+        coverPath: currentCoverPath,
       }));
       setState("草稿已保存");
     };
@@ -343,6 +452,8 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         if (statusInput instanceof HTMLSelectElement) statusInput.value = draft.status || "published";
         if (bodyInput instanceof HTMLTextAreaElement) bodyInput.value = draft.body || "";
         if (obsidianInput instanceof HTMLInputElement && draft.obsidianPath) obsidianInput.value = draft.obsidianPath;
+        currentSlug = draft.slug || "";
+        currentCoverPath = draft.coverPath || "";
       } catch {
         localStorage.removeItem("blog-admin-draft");
       }
@@ -354,7 +465,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       setState("正在导入 Word");
       try {
         let result;
-        if (isLocalWritingHost) {
+        if (!isGithubPages) {
           try {
             const dataUrl = await fileToBase64(file);
             result = await postJson("/api/admin/import-docx", { fileName: file.name, dataUrl });
@@ -398,22 +509,54 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 
     form?.addEventListener("input", updatePreview);
     saveDraftButton?.addEventListener("click", saveDraft);
-    clearButton?.addEventListener("click", () => {
-      form?.reset();
-      if (bodyInput instanceof HTMLTextAreaElement) bodyInput.value = "";
-      localStorage.removeItem("blog-admin-draft");
-      assets.splice(0, assets.length);
-      coverAsset = null;
-      setState("已清空");
-      updatePreview();
+    clearButton?.addEventListener("click", clearEditor);
+    newPostButton?.addEventListener("click", clearEditor);
+    refreshPostsButton?.addEventListener("click", loadPosts);
+    tokenInput?.addEventListener("change", () => {
+      rememberAdminToken();
+      loadPosts();
+    });
+
+    postList?.addEventListener("click", async (event) => {
+      const editButton = event.target instanceof Element ? event.target.closest("[data-edit-post]") : null;
+      const deleteButton = event.target instanceof Element ? event.target.closest("[data-delete-post]") : null;
+
+      if (editButton instanceof HTMLButtonElement) {
+        const slug = editButton.dataset.editPost || "";
+        if (!slug) return;
+        setState("正在读取文章");
+        try {
+          const result = await requestJson(`/api/admin/posts/${encodeURIComponent(slug)}`);
+          applyPostToEditor(result.post);
+          loadPosts();
+        } catch (error) {
+          setState(error instanceof Error ? error.message : "读取失败");
+        }
+      }
+
+      if (deleteButton instanceof HTMLButtonElement) {
+        const slug = deleteButton.dataset.deletePost || "";
+        if (!slug || !window.confirm(`确定删除 ${slug} 吗？这会同步删除生成的博客页面。`)) return;
+        setState("正在删除文章");
+        try {
+          await requestJson(`/api/admin/posts/${encodeURIComponent(slug)}`, { method: "DELETE" });
+          if (currentSlug === slug) clearEditor();
+          else await loadPosts();
+          setState("文章已删除");
+        } catch (error) {
+          setState(error instanceof Error ? error.message : "删除失败");
+        }
+      }
     });
 
     form?.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!(titleInput instanceof HTMLInputElement) || !(bodyInput instanceof HTMLTextAreaElement)) return;
-      if (!requireLocalPublishApi()) return;
+      if (!requireBackendApi()) return;
+      rememberAdminToken();
       setState("正在发布");
       const payload = {
+        slug: currentSlug,
         title: titleInput.value,
         summary: summaryInput instanceof HTMLInputElement ? summaryInput.value : "",
         category: categoryInput instanceof HTMLSelectElement ? categoryInput.value : "研究日志",
@@ -423,6 +566,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         obsidianPath: obsidianInput instanceof HTMLInputElement ? obsidianInput.value : "",
         assets,
         cover: coverAsset,
+        coverPath: currentCoverPath,
         rebuild: true,
       };
       let result;
@@ -433,13 +577,20 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         return;
       }
       localStorage.removeItem("blog-admin-draft");
+      currentSlug = result.slug || currentSlug;
+      currentCoverPath = result.post?.coverPath || currentCoverPath;
+      assets.splice(0, assets.length);
+      coverAsset = null;
       setState(`已发布：${result.href}`);
+      loadPosts();
     });
 
+    if (tokenInput instanceof HTMLInputElement) tokenInput.value = localStorage.getItem("blog-admin-token") || "";
     loadDraft();
     updatePreview();
     if (!isLocalWritingHost) {
-      setState("在线静态预览：可导入和写草稿");
+      setState(isGithubPages ? "GitHub Pages：可导入和写草稿" : "正在连接后台数据库");
     }
+    loadPosts();
   </script>
 </BaseLayout>

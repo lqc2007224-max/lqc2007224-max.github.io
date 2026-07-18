@@ -1,8 +1,9 @@
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { basename, dirname, extname, join, normalize, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -10,8 +11,40 @@ const projectRoot = resolve(".");
 const root = resolve("dist");
 const publicRoot = resolve("public");
 const desktopRoot = resolve("C:\\Users\\23676\\Desktop");
+const dataRoot = resolve(".data");
 const port = Number.parseInt(process.env.PORT || "4321", 10);
 const host = process.env.HOST || "127.0.0.1";
+const adminToken = String(process.env.ADMIN_TOKEN || "").trim();
+
+mkdirSync(dataRoot, { recursive: true });
+const db = new DatabaseSync(join(dataRoot, "cms.sqlite"));
+db.exec(`
+  PRAGMA journal_mode = WAL;
+  CREATE TABLE IF NOT EXISTS posts (
+    slug TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '博客',
+    status TEXT NOT NULL DEFAULT 'published',
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    cover_path TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    obsidian_path TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    published_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_slug TEXT NOT NULL,
+    author TEXT NOT NULL DEFAULT '匿名访客',
+    label TEXT NOT NULL DEFAULT '想法',
+    message TEXT NOT NULL,
+    approved INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_comments_post_slug ON comments(post_slug, created_at);
+`);
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
@@ -71,10 +104,62 @@ function escapeYaml(value) {
   return String(value || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-function buildMarkdown({ title, slug, summary, category, status, tags, coverPath, body }) {
-  const date = new Date().toISOString().slice(0, 10);
+function buildMarkdown({ title, slug, summary, category, status, tags, coverPath, body, date }) {
+  const displayDate = String(date || new Date().toISOString().slice(0, 10));
   const tagText = Array.isArray(tags) ? tags.map((tag) => `"${escapeYaml(tag)}"`).join(", ") : "";
-  return `---\ntitle: "${escapeYaml(title)}"\nslug: "${escapeYaml(slug)}"\nsummary: "${escapeYaml(summary)}"\ncategory: "${escapeYaml(category)}"\ndate: "${date}"\nstatus: "${escapeYaml(status)}"\ntags: [${tagText}]\n${coverPath ? `cover: "${escapeYaml(coverPath)}"\n` : ""}---\n\n${String(body || "").trim()}\n`;
+  return `---\ntitle: "${escapeYaml(title)}"\nslug: "${escapeYaml(slug)}"\nsummary: "${escapeYaml(summary)}"\ncategory: "${escapeYaml(category)}"\ndate: "${displayDate}"\nstatus: "${escapeYaml(status)}"\ntags: [${tagText}]\n${coverPath ? `cover: "${escapeYaml(coverPath)}"\n` : ""}---\n\n${String(body || "").trim()}\n`;
+}
+
+function isLocalRequest(request) {
+  const remote = request.socket.remoteAddress || "";
+  return remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
+}
+
+function requireAdmin(request, response) {
+  if (!adminToken && isLocalRequest(request)) return true;
+  const supplied = request.headers["x-admin-token"] || "";
+  if (String(supplied) === adminToken && adminToken) return true;
+  json(response, 401, { error: "需要后台权限。请设置或填写 ADMIN_TOKEN。" });
+  return false;
+}
+
+function parseTagsJson(value) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function serializePost(row) {
+  if (!row) return null;
+  return {
+    slug: row.slug,
+    title: row.title,
+    summary: row.summary,
+    category: row.category,
+    status: row.status,
+    tags: parseTagsJson(row.tags_json),
+    coverPath: row.cover_path,
+    body: row.body,
+    obsidianPath: row.obsidian_path,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    publishedAt: row.published_at,
+    href: `/blog/${row.slug}/`,
+  };
+}
+
+function getDbPost(slug) {
+  return serializePost(db.prepare("SELECT * FROM posts WHERE slug = ?").get(slug));
+}
+
+function listDbPosts() {
+  return db
+    .prepare("SELECT * FROM posts ORDER BY datetime(updated_at) DESC")
+    .all()
+    .map(serializePost);
 }
 
 async function writeDataUrlFile(asset, targetDir) {
@@ -172,6 +257,7 @@ async function findFileBySuffix(baseDir, suffix) {
 
 async function handleImportDocx(request, response) {
   try {
+    if (!requireAdmin(request, response)) return;
     const payload = await readJson(request);
     const originalFileName = String(payload.fileName || "document.docx");
     if (basename(originalFileName).startsWith("~$")) {
@@ -258,8 +344,24 @@ async function handleImportDocx(request, response) {
   }
 }
 
+async function handleListPosts(request, response) {
+  if (!requireAdmin(request, response)) return;
+  json(response, 200, { posts: listDbPosts() });
+}
+
+async function handleGetPost(request, response, slug) {
+  if (!requireAdmin(request, response)) return;
+  const post = getDbPost(slug);
+  if (!post) {
+    json(response, 404, { error: "没有找到这篇文章。" });
+    return;
+  }
+  json(response, 200, { post });
+}
+
 async function handlePublish(request, response) {
   try {
+    if (!requireAdmin(request, response)) return;
     const payload = await readJson(request);
     const title = String(payload.title || "").trim();
     if (!title) {
@@ -267,11 +369,13 @@ async function handlePublish(request, response) {
       return;
     }
 
-    const slug = slugify(title);
+    const requestedSlug = payload.slug ? slugify(payload.slug) : "";
+    const slug = requestedSlug || slugify(title);
     const category = String(payload.category || "博客").trim();
     const status = String(payload.status || "published").trim();
     const tags = Array.isArray(payload.tags) ? payload.tags.map((tag) => String(tag).trim()).filter(Boolean) : [];
     let body = String(payload.body || "").trim();
+    const existing = getDbPost(slug);
     const assetRelativeDir = join("assets", "blog", slug);
     const assetPublicDir = join(publicRoot, assetRelativeDir);
     await mkdir(assetPublicDir, { recursive: true });
@@ -282,12 +386,16 @@ async function handlePublish(request, response) {
       body = body.replace(new RegExp(`/assets/blog/[^)\\s]+/${saved.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "g"), `/assets/blog/${slug}/${saved.name}`);
     }
 
-    let coverPath = "";
+    let coverPath = String(payload.coverPath || existing?.coverPath || "");
     if (payload.cover?.dataUrl) {
       const saved = await writeDataUrlFile(payload.cover, assetPublicDir);
       await mirrorPublicAsset(join(assetRelativeDir, saved.name));
       coverPath = `/assets/blog/${slug}/${saved.name}`;
     }
+
+    const now = new Date().toISOString();
+    const publishedAt = existing?.publishedAt || now.slice(0, 10);
+    const obsidianPath = String(payload.obsidianPath || existing?.obsidianPath || join(desktopRoot, "obsidian", "Blog")).trim();
 
     const markdown = buildMarkdown({
       title,
@@ -298,14 +406,13 @@ async function handlePublish(request, response) {
       tags,
       coverPath,
       body,
+      date: publishedAt.slice(0, 10),
     });
 
     const blogDir = join(projectRoot, "src", "content", "blog");
     await mkdir(blogDir, { recursive: true });
     await writeFile(join(blogDir, `${slug}.md`), markdown, "utf8");
 
-    const defaultObsidianPath = join(desktopRoot, "obsidian", "Blog");
-    const obsidianPath = String(payload.obsidianPath || defaultObsidianPath).trim();
     if (obsidianPath) {
       const resolvedObsidianPath = resolve(obsidianPath);
       if (!resolvedObsidianPath.startsWith(desktopRoot)) {
@@ -329,6 +436,38 @@ async function handlePublish(request, response) {
       await writeFile(join(resolvedObsidianPath, `${slug}.md`), obsidianMarkdown, "utf8");
     }
 
+    db.prepare(`
+      INSERT INTO posts (
+        slug, title, summary, category, status, tags_json, cover_path, body,
+        obsidian_path, created_at, updated_at, published_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(slug) DO UPDATE SET
+        title = excluded.title,
+        summary = excluded.summary,
+        category = excluded.category,
+        status = excluded.status,
+        tags_json = excluded.tags_json,
+        cover_path = excluded.cover_path,
+        body = excluded.body,
+        obsidian_path = excluded.obsidian_path,
+        updated_at = excluded.updated_at,
+        published_at = excluded.published_at
+    `).run(
+      slug,
+      title,
+      String(payload.summary || ""),
+      category,
+      status,
+      JSON.stringify(tags),
+      coverPath,
+      body,
+      obsidianPath,
+      existing?.createdAt || now,
+      now,
+      publishedAt,
+    );
+
     let rebuild = "skipped";
     if (payload.rebuild !== false) {
       await runBuild();
@@ -341,9 +480,85 @@ async function handlePublish(request, response) {
       href: `/blog/${slug}/`,
       markdownPath: `src/content/blog/${slug}.md`,
       rebuild,
+      post: getDbPost(slug),
     });
   } catch (error) {
     json(response, 500, { error: error.message || "发布失败。" });
+  }
+}
+
+async function handleDeletePost(request, response, slug) {
+  try {
+    if (!requireAdmin(request, response)) return;
+    const post = getDbPost(slug);
+    db.prepare("DELETE FROM posts WHERE slug = ?").run(slug);
+    db.prepare("DELETE FROM comments WHERE post_slug = ?").run(slug);
+    await rm(join(projectRoot, "src", "content", "blog", `${slug}.md`), { force: true });
+
+    let rebuild = "skipped";
+    if (post) {
+      await runBuild();
+      rebuild = "done";
+    }
+    json(response, 200, { ok: true, slug, rebuild });
+  } catch (error) {
+    json(response, 500, { error: error.message || "删除失败。" });
+  }
+}
+
+async function handleListComments(request, response, url) {
+  const rawPostSlug = String(url.searchParams.get("post") || "").trim();
+  const postSlug = rawPostSlug ? slugify(rawPostSlug) : "";
+  if (!postSlug) {
+    json(response, 400, { error: "缺少文章 slug。" });
+    return;
+  }
+  const comments = db
+    .prepare("SELECT id, author, label, message, created_at FROM comments WHERE post_slug = ? AND approved = 1 ORDER BY id DESC LIMIT 120")
+    .all(postSlug)
+    .map((row) => ({
+      id: row.id,
+      author: row.author,
+      label: row.label,
+      message: row.message,
+      date: row.created_at,
+    }));
+  json(response, 200, { comments });
+}
+
+async function handleCreateComment(request, response) {
+  try {
+    const payload = await readJson(request);
+    const rawPostSlug = String(payload.postSlug || payload.post || "").trim();
+    const postSlug = rawPostSlug ? slugify(rawPostSlug) : "";
+    const message = String(payload.message || "").trim();
+    if (!postSlug || !message) {
+      json(response, 400, { error: "评论内容不能为空。" });
+      return;
+    }
+    const now = new Date().toISOString();
+    const result = db.prepare(`
+      INSERT INTO comments (post_slug, author, label, message, approved, created_at)
+      VALUES (?, ?, ?, ?, 1, ?)
+    `).run(
+      postSlug,
+      String(payload.author || "").trim() || "匿名访客",
+      String(payload.label || "想法").trim() || "想法",
+      message.slice(0, 5000),
+      now,
+    );
+    json(response, 200, {
+      ok: true,
+      comment: {
+        id: Number(result.lastInsertRowid),
+        author: String(payload.author || "").trim() || "匿名访客",
+        label: String(payload.label || "想法").trim() || "想法",
+        message: message.slice(0, 5000),
+        date: now,
+      },
+    });
+  } catch (error) {
+    json(response, 500, { error: error.message || "评论发布失败。" });
   }
 }
 
@@ -395,15 +610,42 @@ function resolveRequest(url) {
 }
 
 createServer(async (request, response) => {
-  const pathname = new URL(request.url || "/", `http://${host}:${port}`).pathname;
+  const url = new URL(request.url || "/", `http://${host}:${port}`);
+  const pathname = url.pathname;
 
   if (request.method === "POST" && pathname === "/api/admin/import-docx") {
     await handleImportDocx(request, response);
     return;
   }
 
+  if (request.method === "GET" && pathname === "/api/admin/posts") {
+    await handleListPosts(request, response);
+    return;
+  }
+
+  const postMatch = /^\/api\/admin\/posts\/([^/]+)$/.exec(pathname);
+  if (postMatch && request.method === "GET") {
+    await handleGetPost(request, response, decodeURIComponent(postMatch[1]));
+    return;
+  }
+
+  if (postMatch && request.method === "DELETE") {
+    await handleDeletePost(request, response, decodeURIComponent(postMatch[1]));
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/api/admin/publish") {
     await handlePublish(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/comments") {
+    await handleListComments(request, response, url);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/comments") {
+    await handleCreateComment(request, response);
     return;
   }
 
