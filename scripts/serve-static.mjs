@@ -116,10 +116,13 @@ function isLocalRequest(request) {
 }
 
 function requireAdmin(request, response) {
-  if (!adminToken && isLocalRequest(request)) return true;
+  if (!adminToken) {
+    json(response, 503, { error: "后台没有配置 ADMIN_TOKEN。请在 .env.local 或服务器环境变量里设置后台 Token。" });
+    return false;
+  }
   const supplied = request.headers["x-admin-token"] || "";
-  if (String(supplied) === adminToken && adminToken) return true;
-  json(response, 401, { error: "需要后台权限。请设置或填写 ADMIN_TOKEN。" });
+  if (String(supplied) === adminToken) return true;
+  json(response, 401, { error: "后台 Token 不正确。只有你本人可以上传、发布、编辑或删除博客。" });
   return false;
 }
 

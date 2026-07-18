@@ -17,7 +17,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         <strong data-admin-state>等待编辑</strong>
         <label class="admin-token">
           <span>后台 Token</span>
-          <input data-admin-token type="password" placeholder="本地可留空，服务器必填" />
+          <input data-admin-token type="password" placeholder="只有本人知道，用来上传和发布" />
         </label>
       </aside>
     </section>
@@ -171,6 +171,15 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       const value = getAdminToken();
       if (value) localStorage.setItem("blog-admin-token", value);
       else localStorage.removeItem("blog-admin-token");
+    };
+
+    const hasAdminToken = () => Boolean(getAdminToken());
+
+    const requireAdminToken = () => {
+      if (hasAdminToken()) return true;
+      setState("请先填写后台 Token");
+      window.alert("为了保证只有你能上传博客，请先在右上角填写后台 Token。");
+      return false;
     };
 
     const requireBackendApi = () => {
@@ -396,6 +405,16 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         renderPostList([]);
         return;
       }
+      if (!hasAdminToken()) {
+        if (postList) {
+          postList.innerHTML = `<div class="admin-empty">
+            <strong>文章库已锁定</strong>
+            <p>输入后台 Token 后点击刷新，才能读取、上传、编辑或删除博客。</p>
+          </div>`;
+        }
+        setState("后台已锁定");
+        return;
+      }
       try {
         const result = await requestJson("/api/admin/posts");
         renderPostList(result.posts || []);
@@ -500,6 +519,10 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     docxInput?.addEventListener("change", async () => {
       const file = docxInput instanceof HTMLInputElement ? docxInput.files?.[0] : null;
       if (!file) return;
+      if (!requireAdminToken()) {
+        if (docxInput instanceof HTMLInputElement) docxInput.value = "";
+        return;
+      }
       setState("正在导入 Word");
       try {
         const result = await importDocxFile(file);
@@ -517,7 +540,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     docxPublishInput?.addEventListener("change", async () => {
       const file = docxPublishInput instanceof HTMLInputElement ? docxPublishInput.files?.[0] : null;
       if (!file) return;
-      if (!requireBackendApi()) {
+      if (!requireBackendApi() || !requireAdminToken()) {
         if (docxPublishInput instanceof HTMLInputElement) docxPublishInput.value = "";
         return;
       }
@@ -585,6 +608,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       const deleteButton = event.target instanceof Element ? event.target.closest("[data-delete-post]") : null;
 
       if (editButton instanceof HTMLButtonElement) {
+        if (!requireAdminToken()) return;
         const slug = editButton.dataset.editPost || "";
         if (!slug) return;
         setState("正在读取文章");
@@ -598,6 +622,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       }
 
       if (deleteButton instanceof HTMLButtonElement) {
+        if (!requireAdminToken()) return;
         const slug = deleteButton.dataset.deletePost || "";
         if (!slug || !window.confirm(`确定删除 ${slug} 吗？这会同步删除生成的博客页面。`)) return;
         setState("正在删除文章");
@@ -615,7 +640,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     form?.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!(titleInput instanceof HTMLInputElement) || !(bodyInput instanceof HTMLTextAreaElement)) return;
-      if (!requireBackendApi()) return;
+      if (!requireBackendApi() || !requireAdminToken()) return;
       rememberAdminToken();
       setState("正在发布");
       const payload = buildPublishPayload();
