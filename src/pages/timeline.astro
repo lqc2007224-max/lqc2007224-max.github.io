@@ -1,0 +1,17 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { timeline } from "../data/site";
+---
+
+<BaseLayout title="成长">
+  <div class="page-shell">
+    <section class="section-header">
+      <p class="eyebrow">Timeline</p>
+      <h1>成长记录</h1>
+      <p>公开部分只保留适合展示的阶段记录，私密内容不放到网站。</p>
+    </section>
+    <section class="timeline">
+      {timeline.map((item) => <article class="timeline-item"><time>{item.date}</time><div><h3>{item.title}</h3><p>{item.detail}</p></div></article>)}
+    </section>
+  </div>
+</BaseLayout>

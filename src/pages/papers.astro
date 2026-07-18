@@ -1,0 +1,102 @@
+---
+import { papers } from "../data/site";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { slugify } from "../utils/slug";
+
+const paperTags = [...new Set(papers.flatMap((paper) => paper.tags))];
+const coverClasses = ["cover-paper", "cover-blue", "cover-dark", "cover-cyan"];
+---
+
+<BaseLayout title="论文">
+  <div class="diary-shell archive-page diary-archive">
+    <section class="archive-hero archive-hero-row">
+      <div>
+        <p class="diary-kicker">Papers / Reading Notes</p>
+        <h1>读论文，不止摘结论，也要留下自己的判断。</h1>
+        <p>
+          每篇记录都会尽量回答四件事：它在问什么、方法靠什么成立、我信到什么程度，
+          以及它能不能接回自己的项目。点进详情可以一起讨论不同看法。
+        </p>
+      </div>
+      <aside class="archive-ledger" aria-label="论文阅读概览">
+        <span>{String(papers.length).padStart(2, "0")}</span>
+        <strong>篇阅读记录</strong>
+        <p>更重视问题意识和迁移价值，不把论文笔记写成摘要搬运。</p>
+      </aside>
+    </section>
+
+    <section class="archive-toolbar diary-toolbar" data-paper-scope>
+      <label class="archive-search">
+        <span class="sr-only">搜索论文</span>
+        <input data-paper-search type="search" placeholder="搜索论文、方法、启发" aria-label="搜索论文" />
+      </label>
+      <div class="archive-filters" aria-label="论文标签筛选">
+        <button class="active" type="button" data-paper-filter="all">全部</button>
+        {paperTags.map((tag) => <button type="button" data-paper-filter={tag}>{tag}</button>)}
+      </div>
+    </section>
+
+    <section class="post-feed archive-feed" aria-label="论文列表">
+      {
+        papers.map((paper, index) => (
+          <article
+            class="feed-item diary-feed-item"
+            data-paper-card
+            data-tags={paper.tags.join(" ")}
+            data-search={`${paper.title} ${paper.venue} ${paper.status} ${paper.takeaway} ${paper.question} ${paper.method} ${paper.thought} ${paper.tags.join(" ")}`}
+          >
+            <a class={`feed-cover ${coverClasses[index % coverClasses.length]}`} href={`/papers/${slugify(paper.title)}/`} aria-label={`进入 ${paper.title}`}>
+              <span>{paper.venue}</span>
+            </a>
+            <div class="feed-body">
+              <div class="feed-meta">
+                <span>{paper.year}</span>
+                <span>{paper.status}</span>
+                <span>#{String(index + 1).padStart(2, "0")}</span>
+              </div>
+              <h2><a href={`/papers/${slugify(paper.title)}/`}>{paper.title}</a></h2>
+              <p>{paper.takeaway}</p>
+              <p class="feed-note">{paper.coreClaim}</p>
+              <div class="feed-tags">{paper.tags.map((tag) => <span>{tag}</span>)}</div>
+            </div>
+          </article>
+        ))
+      }
+    </section>
+
+    <p class="empty-state" data-paper-empty hidden>没有找到匹配论文，换个关键词或标签试试。</p>
+  </div>
+
+  <script>
+    const paperScope = document.querySelector("[data-paper-scope]");
+    const paperCards = Array.from(document.querySelectorAll("[data-paper-card]"));
+    const paperSearch = document.querySelector("[data-paper-search]");
+    const paperButtons = Array.from(document.querySelectorAll("[data-paper-filter]"));
+    const paperEmpty = document.querySelector("[data-paper-empty]");
+    let activePaperFilter = "all";
+
+    const applyPaperFilters = () => {
+      const query = paperSearch instanceof HTMLInputElement ? paperSearch.value.toLowerCase().trim() : "";
+      let visibleCount = 0;
+      paperCards.forEach((card) => {
+        if (!(card instanceof HTMLElement)) return;
+        const tags = card.dataset.tags || "";
+        const text = (card.dataset.search || "").toLowerCase();
+        const visible = (activePaperFilter === "all" || tags.includes(activePaperFilter)) && (!query || text.includes(query));
+        card.hidden = !visible;
+        if (visible) visibleCount += 1;
+      });
+      if (paperEmpty instanceof HTMLElement) paperEmpty.hidden = visibleCount > 0;
+    };
+
+    paperScope?.addEventListener("click", (event) => {
+      const button = event.target instanceof Element ? event.target.closest("[data-paper-filter]") : null;
+      if (!(button instanceof HTMLButtonElement)) return;
+      activePaperFilter = button.dataset.paperFilter || "all";
+      paperButtons.forEach((item) => item.classList.toggle("active", item === button));
+      applyPaperFilters();
+    });
+
+    paperSearch?.addEventListener("input", applyPaperFilters);
+  </script>
+</BaseLayout>

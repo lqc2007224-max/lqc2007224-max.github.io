@@ -1,0 +1,150 @@
+---
+import { notes, papers } from "../data/site";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { getLocalBlogPosts } from "../utils/blog";
+import { slugify } from "../utils/slug";
+
+const posts = [
+  ...getLocalBlogPosts().map((post) => ({
+    title: post.title,
+    category: post.category,
+    subcategory: post.category,
+    date: post.date,
+    status: post.status === "draft" ? "草稿" : "已发布",
+    summary: post.summary,
+    note: post.body.split(/\r?\n/).find((line) => line.trim() && !line.startsWith("#")) || post.summary,
+    tags: post.tags,
+    href: post.href,
+  })),
+  ...papers.map((paper) => ({
+    title: paper.title,
+    category: "论文",
+    subcategory: paper.venue,
+    date: paper.year,
+    status: paper.status,
+    summary: paper.takeaway,
+    note: paper.coreClaim,
+    tags: paper.tags,
+    href: `/papers/${slugify(paper.title)}/`,
+  })),
+  ...notes.map((note) => ({
+    title: note.title,
+    category: "笔记",
+    subcategory: note.type,
+    date: note.date,
+    status: note.status,
+    summary: note.summary,
+    note: note.lead,
+    tags: [note.type, note.action],
+    href: `/notes/${slugify(note.title)}/`,
+  })),
+].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+
+const categories = ["全部", ...new Set(posts.flatMap((post) => [post.category, post.subcategory]))];
+const coverClasses = ["cover-paper", "cover-blue", "cover-gold", "cover-teal", "cover-cyan", "cover-dark"];
+---
+
+<BaseLayout title="博客">
+  <div class="diary-shell archive-page diary-archive">
+    <section class="archive-hero archive-hero-row">
+      <div>
+        <p class="diary-kicker">Blog / Papers & Notes</p>
+        <h1>博客是论文、笔记和想法的共同入口。</h1>
+        <p>
+          这里不再把论文和笔记拆成两个导航。每篇文章都会带上分类标签，你可以按论文、学习计划、
+          研究日志或项目管理来筛选，也可以直接进入正文讨论。
+        </p>
+      </div>
+      <aside class="archive-ledger" aria-label="博客概览">
+        <span>{String(posts.length).padStart(2, "0")}</span>
+        <strong>篇公开文章</strong>
+        <p>读过的论文、学习过程、研究记录和阶段性想法都会沉淀到这里。</p>
+      </aside>
+    </section>
+
+    <section class="archive-toolbar diary-toolbar" data-blog-scope>
+      <label class="archive-search">
+        <span class="sr-only">搜索博客</span>
+        <input data-blog-search type="search" placeholder="搜索标题、分类、关键词" aria-label="搜索博客" />
+      </label>
+      <div class="archive-filters" aria-label="博客分类筛选">
+        {
+          categories.map((category, index) => (
+            <button class={index === 0 ? "active" : ""} type="button" data-blog-filter={category}>
+              {category}
+            </button>
+          ))
+        }
+      </div>
+    </section>
+
+    <section class="post-feed archive-feed" aria-label="博客文章列表">
+      {
+        posts.map((post, index) => (
+          <article
+            class="feed-item diary-feed-item"
+            data-blog-card
+            data-category={`${post.category} ${post.subcategory}`}
+            data-search={`${post.title} ${post.category} ${post.subcategory} ${post.status} ${post.summary} ${post.note} ${post.tags.join(" ")}`}
+          >
+            <a class={`feed-cover ${coverClasses[index % coverClasses.length]}`} href={post.href} aria-label={`进入 ${post.title}`}>
+              <span>{post.subcategory}</span>
+            </a>
+            <div class="feed-body">
+              <div class="feed-meta">
+                <span>{post.date}</span>
+                <span>{post.category}</span>
+                <span>{post.status}</span>
+              </div>
+              <h2><a href={post.href}>{post.title}</a></h2>
+              <p>{post.summary}</p>
+              <p class="feed-note">{post.note}</p>
+              <div class="feed-tags">
+                <span>{post.category}</span>
+                <span>{post.subcategory}</span>
+                {post.tags.map((tag) => <span>{tag}</span>)}
+              </div>
+            </div>
+          </article>
+        ))
+      }
+    </section>
+
+    <p class="empty-state" data-blog-empty hidden>没有找到匹配文章，换个关键词或分类试试。</p>
+  </div>
+
+  <script>
+    const blogScope = document.querySelector("[data-blog-scope]");
+    const blogCards = Array.from(document.querySelectorAll("[data-blog-card]"));
+    const blogSearch = document.querySelector("[data-blog-search]");
+    const blogButtons = Array.from(document.querySelectorAll("[data-blog-filter]"));
+    const blogEmpty = document.querySelector("[data-blog-empty]");
+    let activeBlogFilter = "全部";
+
+    const applyBlogFilters = () => {
+      const query = blogSearch instanceof HTMLInputElement ? blogSearch.value.toLowerCase().trim() : "";
+      let visibleCount = 0;
+      blogCards.forEach((card) => {
+        if (!(card instanceof HTMLElement)) return;
+        const category = card.dataset.category || "";
+        const text = (card.dataset.search || "").toLowerCase();
+        const visible =
+          (activeBlogFilter === "全部" || category.includes(activeBlogFilter)) &&
+          (!query || text.includes(query));
+        card.hidden = !visible;
+        if (visible) visibleCount += 1;
+      });
+      if (blogEmpty instanceof HTMLElement) blogEmpty.hidden = visibleCount > 0;
+    };
+
+    blogScope?.addEventListener("click", (event) => {
+      const button = event.target instanceof Element ? event.target.closest("[data-blog-filter]") : null;
+      if (!(button instanceof HTMLButtonElement)) return;
+      activeBlogFilter = button.dataset.blogFilter || "全部";
+      blogButtons.forEach((item) => item.classList.toggle("active", item === button));
+      applyBlogFilters();
+    });
+
+    blogSearch?.addEventListener("input", applyBlogFilters);
+  </script>
+</BaseLayout>

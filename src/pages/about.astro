@@ -1,0 +1,85 @@
+---
+import SectionHeader from "../components/SectionHeader.astro";
+import { profile, projects, timeline } from "../data/site";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { slugify } from "../utils/slug";
+---
+
+<BaseLayout title="关于">
+  <div class="page-shell">
+    <SectionHeader
+      eyebrow="About"
+      title="关于褚落"
+      description="这里放个人介绍、公开项目和成长记录。项目不再单独占一个导航入口，它会作为关于页的一部分，和个人经历放在一起。"
+    />
+
+    <section class="about-manifesto">
+      <div>
+        <p class="eyebrow">Working note</p>
+        <h2>我更偏向用实践理解技术。</h2>
+      </div>
+      <p>
+        {profile.bio}
+      </p>
+    </section>
+
+    <div class="split">
+      <section class="panel accent-red">
+        <p class="eyebrow">Profile</p>
+        <h2>个人简介</h2>
+        <p>
+          这个站点会保留结果，也保留走到结果之前的路线：读过哪些论文，做过哪些实验，
+          哪些地方还没有想明白，以及下一步准备怎么推进。
+        </p>
+      </section>
+      <section class="panel accent-green">
+        <p class="eyebrow">Focus</p>
+        <h2>当前关注</h2>
+        <div class="focus-list">
+          {profile.currentFocus.map((item) => <span>{item}</span>)}
+        </div>
+      </section>
+    </div>
+
+    <section class="section" id="projects">
+      <div class="section-header">
+        <p class="eyebrow">Projects</p>
+        <h2>项目和作品</h2>
+        <p>这里保留目前公开的项目入口。后续如果项目成熟，再从这里进入更完整的案例页。</p>
+      </div>
+      <div class="grid two">
+        {
+          projects.map((project) => (
+            <a class="card" href={`/projects/${slugify(project.title)}/`}>
+              <div class="card-meta"><span>{project.year}</span><span>{project.status}</span></div>
+              <h3>{project.title}</h3>
+              <p>{project.summary}</p>
+              <div class="tags">{project.tags.map((tag) => <span class="tag">{tag}</span>)}</div>
+            </a>
+          ))
+        }
+      </div>
+    </section>
+
+    <section class="section" id="timeline">
+      <div class="section-header">
+        <p class="eyebrow">Timeline</p>
+        <h2>成长记录</h2>
+        <p>公开部分只保留适合展示的阶段记录，私密内容不放到网站。</p>
+      </div>
+      <div class="timeline">
+        {
+          timeline.map((item) => (
+            <article class="timeline-item">
+              <time>{item.date}</time>
+              <div>
+                <h3>{item.title}</h3>
+                <p>{item.detail}</p>
+              </div>
+            </article>
+          ))
+        }
+      </div>
+    </section>
+  </div>
+</BaseLayout>

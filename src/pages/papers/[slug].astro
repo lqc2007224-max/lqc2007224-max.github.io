@@ -1,0 +1,125 @@
+---
+import DiscussionBox from "../../components/DiscussionBox.astro";
+import { papers } from "../../data/site";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { slugify } from "../../utils/slug";
+
+export function getStaticPaths() {
+  return papers.map((paper) => ({
+    params: { slug: slugify(paper.title) },
+    props: { paper },
+  }));
+}
+
+const { paper } = Astro.props;
+const paperIndex = papers.findIndex((item) => item.title === paper.title);
+const coverClasses = ["cover-paper", "cover-blue", "cover-dark", "cover-cyan"];
+const coverClass = coverClasses[Math.max(paperIndex, 0) % coverClasses.length];
+const tocItems = [
+  { id: "claim", label: "核心判断" },
+  { id: "question", label: "问题" },
+  { id: "method", label: "方法" },
+  ...paper.readings.map((section, index) => ({ id: `reading-${index}`, label: section.title })),
+  { id: "judgement", label: "我的判断" },
+  { id: "discussion", label: "讨论" },
+];
+---
+
+<BaseLayout title={paper.title} description={paper.takeaway}>
+  <div class="reading-progress" data-reading-progress></div>
+  <div class="post-page diary-post">
+    <a class="post-back-link" href="/papers/">返回论文</a>
+
+    <article class={`post-hero ${coverClass}`}>
+      <div class="post-hero-content">
+        <span class="post-category">Reading Note</span>
+        <h1>{paper.title}</h1>
+        <p>{paper.takeaway}</p>
+        <div class="post-meta">
+          <span>{paper.venue}</span>
+          <span>{paper.year}</span>
+          <span>{paper.status}</span>
+        </div>
+      </div>
+    </article>
+
+    <section class="post-layout">
+      <article class="post-prose">
+        <p id="claim" class="post-lead">{paper.coreClaim}</p>
+
+        <section id="question">
+          <p class="section-kicker">Question</p>
+          <h2>这篇内容在问什么</h2>
+          <p>{paper.question}</p>
+        </section>
+
+        <section id="method">
+          <p class="section-kicker">Method</p>
+          <h2>我怎么读它</h2>
+          <p>{paper.method}</p>
+        </section>
+
+        {
+          paper.readings.map((section, index) => (
+            <section id={`reading-${index}`}>
+              <p class="section-kicker">Reading</p>
+              <h2>{section.title}</h2>
+              <p>{section.body}</p>
+              <ul>
+                {section.bullets.map((item) => (
+                  <li>{item}</li>
+                ))}
+              </ul>
+            </section>
+          ))
+        }
+
+        <section id="judgement">
+          <p class="section-kicker">Judgement</p>
+          <h2>我的判断</h2>
+          <p>{paper.thought}</p>
+        </section>
+      </article>
+
+      <aside class="toc-sidebar">
+        <div class="toc-sticky">
+          <p>Contents</p>
+          <nav aria-label="论文目录">
+            {tocItems.map((item) => <a href={`#${item.id}`}>{item.label}</a>)}
+          </nav>
+          <div class="toc-tags">{paper.tags.map((tag) => <span>{tag}</span>)}</div>
+          <details class="toc-details" open>
+            <summary>来源</summary>
+            <p>{paper.source}</p>
+          </details>
+          <details class="toc-details">
+            <summary>参考笔记</summary>
+            <ul>{paper.references.map((reference) => <li>{reference}</li>)}</ul>
+          </details>
+        </div>
+      </aside>
+    </section>
+
+    <section id="discussion" class="diary-discussion-shell">
+      <DiscussionBox
+        storageKey={`discussion-paper-${slugify(paper.title)}`}
+        title="围绕这篇内容碰撞想法"
+        intro="这里更适合讨论论文的假设、方法边界、实验可信度，以及它能不能迁移到真实项目。"
+        labels={["不同看法", "方法质疑", "实验补充", "延伸论文"]}
+        placeholder="比如：你不同意哪一点？它的实验还缺什么？有没有更好的论文或方法可以对照？"
+      />
+    </section>
+  </div>
+
+  <script>
+    const progress = document.querySelector("[data-reading-progress]");
+    const updateProgress = () => {
+      if (!(progress instanceof HTMLElement)) return;
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      const value = max > 0 ? window.scrollY / max : 0;
+      progress.style.transform = `scaleX(${Math.min(1, Math.max(0, value))})`;
+    };
+    updateProgress();
+    document.addEventListener("scroll", updateProgress, { passive: true });
+  </script>
+</BaseLayout>

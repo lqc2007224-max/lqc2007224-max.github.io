@@ -1,17 +1,125 @@
 ---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { notes, papers, profile, projects, recommendations, stats } from "../data/site";
+import { slugify } from "../utils/slug";
+
+const quickLinks = [
+  { label: "关于我", href: "/about/", tone: "teal", icon: "me" },
+  { label: "博客", href: "/blog/", tone: "violet", icon: "paper" },
+  { label: "作品", href: "/about/#projects", tone: "green", icon: "work" },
+  { label: "成长", href: "/about/#timeline", tone: "rose", icon: "note" },
+  { label: "联系", href: "/contact/", tone: "gold", icon: "contact" },
+];
 
 ---
 
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
-</html>
+<BaseLayout title={profile.name} description={profile.bio}>
+  <section class="hero-stage">
+    <canvas id="fluid-canvas" class="fluid-canvas" aria-hidden="true"></canvas>
+    <div class="ambient-field" aria-hidden="true">
+      <span class="light-sheet sheet-one"></span>
+      <span class="light-sheet sheet-two"></span>
+      <span class="light-sheet sheet-three"></span>
+    </div>
+    <div class="ghost-name" aria-hidden="true">{profile.name}</div>
+
+    <div class="hero-center">
+      <a class="tiny-pill reveal-item" href="/private/">Private knowledge base</a>
+      <div class="identity-lockup reveal-item">
+        <img class="hero-avatar" src="/assets/avatar-console.svg" alt="个人站头像视觉" width="260" height="260" />
+        <p class="hello">Hey, 我是 {profile.greetingName}</p>
+        <h1>{profile.role}</h1>
+        <p class="lead">{profile.bio}</p>
+      </div>
+      <form class="ask-box reveal-item" action="/blog/">
+        <input value="" placeholder="想看项目、论文、笔记和学习记录？" aria-label="站内探索入口" />
+        <button type="submit" aria-label="进入博客页"><span>→</span></button>
+      </form>
+      <div class="quick-grid reveal-item" aria-label="快捷入口">
+        {
+          quickLinks.map((item) => (
+            <a class={`quick-tile ${item.tone}`} href={item.href}>
+              <span class={`tile-icon icon-${item.icon}`} aria-hidden="true"></span>
+              <span>{item.label}</span>
+            </a>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <div class="page-shell">
+    <section class="section">
+      <div class="stats-row">
+        {stats.map((stat) => <div class="stat"><strong>{stat.value}</strong><span>{stat.label}</span></div>)}
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <p class="eyebrow">Featured work</p>
+        <h2>项目和作品集</h2>
+        <p>把竞赛项目、研究尝试、工程工具和复盘统一整理成可阅读、可讨论、可继续扩展的作品集。</p>
+      </div>
+      <div class="grid">
+        {
+          projects.slice(0, 5).map((project) => (
+            <a class="card" href={`/projects/${slugify(project.title)}/`}>
+              <div class="card-meta"><span>{project.year}</span><span>{project.status}</span></div>
+              <h3>{project.title}</h3>
+              <p>{project.summary}</p>
+              <div class="tags">{project.tags.map((tag) => <span class="tag">{tag}</span>)}</div>
+            </a>
+          ))
+        }
+      </div>
+    </section>
+
+    <section class="section split">
+      <div class="panel accent-violet">
+        <p class="eyebrow">Reading system</p>
+        <h2>论文阅读</h2>
+        <p>每篇论文先抓核心问题，再写方法、实验和自己的判断；后续可以接入全文搜索和标签筛选。</p>
+        <a class="button secondary" href="/blog/">进入博客</a>
+      </div>
+      <div class="grid two">
+        {
+          papers.slice(0, 2).map((paper) => (
+            <a class="card" href={`/papers/${slugify(paper.title)}/`}>
+              <div class="card-meta"><span>{paper.venue}</span><span>{paper.status}</span></div>
+              <h3>{paper.title}</h3>
+              <p>{paper.takeaway}</p>
+              <div class="tags">{paper.tags.map((tag) => <span class="tag">{tag}</span>)}</div>
+            </a>
+          ))
+        }
+      </div>
+    </section>
+
+    <section class="section split">
+      <div>
+        <div class="section-header">
+          <p class="eyebrow">Notebook</p>
+          <h2>学习记录和随笔</h2>
+          <p>短笔记、日记、方法论和研究想法都可以沉淀在这里。</p>
+        </div>
+        <div class="timeline">
+          {
+            notes.map((note) => (
+              <a class="timeline-item" href={`/notes/${slugify(note.title)}/`}>
+                <time>{note.date}</time>
+                <div><h3>{note.title}</h3><p>{note.summary}</p></div>
+              </a>
+            ))
+          }
+        </div>
+      </div>
+      <aside class="panel accent-teal">
+        <p class="eyebrow">Next decisions</p>
+        <h2>后续可选功能</h2>
+        {recommendations.map((item) => <p>{item}</p>)}
+      </aside>
+    </section>
+  </div>
+
+</BaseLayout>

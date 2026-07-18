@@ -1,0 +1,87 @@
+---
+import DiscussionBox from "../../components/DiscussionBox.astro";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { getLocalBlogPosts } from "../../utils/blog";
+
+export function getStaticPaths() {
+  return getLocalBlogPosts().map((post) => ({
+    params: { slug: post.slug },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props;
+---
+
+<BaseLayout title={post.title} description={post.summary}>
+  <div class="reading-progress" data-reading-progress></div>
+  <div class="post-page diary-post">
+    <a class="post-back-link" href="/blog/">返回博客</a>
+
+    <article class="post-hero cover-paper">
+      <div class="post-hero-content">
+        <span class="post-category">{post.category}</span>
+        <h1>{post.title}</h1>
+        <p>{post.summary}</p>
+        <div class="post-meta">
+          <span>{post.date}</span>
+          <span>{post.status === "draft" ? "草稿" : "已发布"}</span>
+          {post.tags.map((tag) => <span>{tag}</span>)}
+        </div>
+      </div>
+    </article>
+
+    <section class="post-layout" data-post-layout>
+      <article class="post-prose" set:html={post.html}></article>
+      <aside class="toc-sidebar">
+        <div class="toc-sticky">
+          <p>目录</p>
+          {
+            post.toc.length ? (
+              <nav class="blog-toc-nav" aria-label="文章目录">
+                {post.toc.map((item) => (
+                  <a class={`toc-depth-${item.level}`} href={`#${item.id}`}>{item.label}</a>
+                ))}
+              </nav>
+            ) : (
+              <span class="toc-empty">这篇文章还没有小标题</span>
+            )
+          }
+          <div class="toc-tags">
+            <span>{post.category}</span>
+            {post.tags.map((tag) => <span>{tag}</span>)}
+          </div>
+          <a href="#discussion">去评论区</a>
+        </div>
+      </aside>
+    </section>
+
+    <section id="discussion" class="diary-discussion-shell">
+      <DiscussionBox
+        storageKey={`discussion-blog-${post.slug}`}
+        title="聊聊这篇博客"
+        intro="这里适合补充资料、指出问题、提出不同看法，或者继续延伸这个话题。"
+        labels={["补充资料", "不同看法", "问题讨论", "继续交流"]}
+        placeholder="你可以直接写下对这篇文章的看法、补充资料或问题。"
+      />
+    </section>
+  </div>
+
+  <script>
+    const progress = document.querySelector("[data-reading-progress]");
+    const postLayout = document.querySelector("[data-post-layout]");
+    const tocSidebar = document.querySelector(".toc-sidebar");
+    const updateProgress = () => {
+      if (!(progress instanceof HTMLElement)) return;
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      const value = max > 0 ? window.scrollY / max : 0;
+      progress.style.transform = `scaleX(${Math.min(1, Math.max(0, value))})`;
+      if (postLayout instanceof HTMLElement && tocSidebar instanceof HTMLElement) {
+        const top = postLayout.getBoundingClientRect().top;
+        tocSidebar.classList.toggle("is-floating", top <= 136);
+      }
+    };
+    updateProgress();
+    document.addEventListener("scroll", updateProgress, { passive: true });
+  </script>
+</BaseLayout>

@@ -1,0 +1,58 @@
+---
+import { notes } from "../data/site";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { slugify } from "../utils/slug";
+
+const coverClasses = ["cover-gold", "cover-teal", "cover-paper", "cover-cyan"];
+---
+
+<BaseLayout title="笔记">
+  <div class="diary-shell archive-page diary-archive">
+    <section class="archive-hero archive-hero-row">
+      <div>
+        <p class="diary-kicker">Notes / Learning Diary</p>
+        <h1>笔记先记录现场，再慢慢长成文章。</h1>
+        <p>
+          这里放学习路线、项目过程、研究日志和还没有完全成型的想法。它们不一定完整，
+          但每条都会尽量留下当时的问题、行动和下一步。
+        </p>
+      </div>
+      <aside class="archive-ledger" aria-label="笔记概览">
+        <span>{String(notes.length).padStart(2, "0")}</span>
+        <strong>条公开笔记</strong>
+        <p>比起一次写完，更适合持续补充、回看和被别人指出盲区。</p>
+      </aside>
+    </section>
+
+    <section class="diary-manifest">
+      <span>记录原则</span>
+      <p>先写清楚自己正在处理的问题，再写看到的证据，最后写下一步动作。这样回头看时，能知道自己当时为什么这么判断。</p>
+    </section>
+
+    <section class="post-feed archive-feed" aria-label="笔记列表">
+      {
+        notes.map((note, index) => (
+          <article class="feed-item diary-feed-item">
+            <a class={`feed-cover ${coverClasses[index % coverClasses.length]}`} href={`/notes/${slugify(note.title)}/`} aria-label={`进入 ${note.title}`}>
+              <span>{note.type}</span>
+            </a>
+            <div class="feed-body">
+              <div class="feed-meta">
+                <span>{note.date}</span>
+                <span>{note.status}</span>
+                <span>{note.action}</span>
+              </div>
+              <h2><a href={`/notes/${slugify(note.title)}/`}>{note.title}</a></h2>
+              <p>{note.summary}</p>
+              <p class="feed-note">{note.lead}</p>
+              <div class="feed-tags">
+                <span>{note.type}</span>
+                <span>{note.source}</span>
+              </div>
+            </div>
+          </article>
+        ))
+      }
+    </section>
+  </div>
+</BaseLayout>

@@ -1,0 +1,203 @@
+---
+interface Props {
+  storageKey: string;
+  title: string;
+  intro: string;
+  labels: string[];
+  placeholder: string;
+}
+
+const { storageKey, title, intro, labels, placeholder } = Astro.props;
+---
+
+<section class="discussion-box thread-board" data-discussion-box data-storage-key={storageKey}>
+  <div class="thread-head">
+    <div>
+      <p class="eyebrow">Comments</p>
+      <h2>评论区</h2>
+      <p>{intro}</p>
+    </div>
+    <span data-discussion-count>0 条</span>
+  </div>
+
+  <form class="thread-composer" data-discussion-form>
+    <div class="thread-avatar" aria-hidden="true">评</div>
+    <div class="thread-compose-main">
+      <p class="thread-compose-title">{title}</p>
+      <div class="thread-compose-top">
+        <label>
+          <span>昵称</span>
+          <input name="author" autocomplete="name" placeholder="可以匿名" />
+        </label>
+        <div class="thread-labels" role="radiogroup" aria-label="讨论方向">
+          {
+            labels.map((label, index) => (
+              <label>
+                <input type="radio" name="label" value={label} checked={index === 0} />
+                <span>{label}</span>
+              </label>
+            ))
+          }
+        </div>
+      </div>
+      <label class="thread-message">
+        <span class="sr-only">评论内容</span>
+        <textarea name="message" rows="4" placeholder={placeholder} required></textarea>
+      </label>
+      <div class="thread-compose-actions">
+        <button class="button" type="submit">发布评论</button>
+        <button class="button secondary" type="button" data-copy-discussion>复制全部评论</button>
+      </div>
+    </div>
+  </form>
+
+  <div class="thread-list" data-discussion-list></div>
+
+  <p class="thread-note">
+    当前是静态站内的预览评论区，会保存在本机浏览器。上线后可以接入 Giscus、Supabase 或后端数据库，让所有访客看到彼此的评论。
+  </p>
+</section>
+
+<script>
+  document.querySelectorAll("[data-discussion-box]").forEach((box) => {
+    if (!(box instanceof HTMLElement)) return;
+    const key = box.dataset.storageKey || "discussion";
+    const form = box.querySelector("[data-discussion-form]");
+    const list = box.querySelector("[data-discussion-list]");
+    const count = box.querySelector("[data-discussion-count]");
+    const copyButton = box.querySelector("[data-copy-discussion]");
+
+    const load = () => {
+      try {
+        return JSON.parse(localStorage.getItem(key) || "[]");
+      } catch {
+        return [];
+      }
+    };
+
+    const save = (items) => {
+      localStorage.setItem(key, JSON.stringify(items));
+    };
+
+    const escapeHtml = (value) =>
+      String(value).replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;",
+      })[char]);
+
+    const initials = (value) => {
+      const text = String(value || "访客").trim();
+      return Array.from(text).slice(0, 1).join("") || "访";
+    };
+
+    const render = () => {
+      const items = load();
+      if (count) count.textContent = `${items.length} 条`;
+      if (!list) return;
+      list.innerHTML = items.length
+        ? items
+            .map((item, index) => {
+              const floor = items.length - index;
+              const author = item.author || "匿名访客";
+              return `
+                <article class="thread-reply">
+                  <div class="thread-reply-side">
+                    <span class="thread-avatar">${escapeHtml(initials(author))}</span>
+                    <strong>${floor} 楼</strong>
+                  </div>
+                  <div class="thread-reply-main">
+                    <header>
+                      <strong>${escapeHtml(author)}</strong>
+                      <span>${escapeHtml(item.label || "想法")}</span>
+                      <time>${escapeHtml(item.date || "")}</time>
+                    </header>
+                    <p>${escapeHtml(item.message || "")}</p>
+                    <button type="button" data-copy-reply="${index}">复制本楼</button>
+                  </div>
+                </article>
+              `;
+            })
+            .join("")
+        : `<div class="thread-empty">
+            <strong>还没有评论</strong>
+            <p>你可以直接在上面留下第一条想法，后续评论会按楼层显示在这里。</p>
+          </div>`;
+    };
+
+    const copyText = async (value) => {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(value);
+          return true;
+        }
+      } catch {
+        // Use textarea fallback below.
+      }
+      const textarea = document.createElement("textarea");
+      textarea.value = value;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      document.body.append(textarea);
+      textarea.select();
+      const success = document.execCommand("copy");
+      textarea.remove();
+      return success;
+    };
+
+    form?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!(form instanceof HTMLFormElement)) return;
+      const data = new FormData(form);
+      const message = String(data.get("message") || "").trim();
+      if (!message) return;
+      const items = load();
+      items.unshift({
+        author: String(data.get("author") || "").trim() || "匿名访客",
+        label: String(data.get("label") || "想法"),
+        message,
+        date: new Date().toLocaleString("zh-CN", {
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      });
+      save(items.slice(0, 80));
+      form.reset();
+      const firstLabel = form.querySelector('input[name="label"]');
+      if (firstLabel instanceof HTMLInputElement) firstLabel.checked = true;
+      render();
+    });
+
+    list?.addEventListener("click", async (event) => {
+      const button = event.target instanceof Element ? event.target.closest("[data-copy-reply]") : null;
+      if (!(button instanceof HTMLButtonElement)) return;
+      const index = Number(button.dataset.copyReply);
+      const item = load()[index];
+      if (!item) return;
+      const success = await copyText(`${item.author}：${item.message}`);
+      button.textContent = success ? "已复制" : "复制失败";
+      window.setTimeout(() => {
+        button.textContent = "复制本楼";
+      }, 1200);
+    });
+
+    copyButton?.addEventListener("click", async () => {
+      const items = load();
+      const text = items.length
+        ? items.map((item, index) => `${items.length - index} 楼 [${item.label}] ${item.author}：${item.message}`).join("\n")
+        : "暂无评论内容";
+      const success = await copyText(text);
+      copyButton.textContent = success ? "已复制" : "复制失败";
+      window.setTimeout(() => {
+        copyButton.textContent = "复制全部评论";
+      }, 1400);
+    });
+
+    render();
+  });
+</script>

@@ -1,0 +1,647 @@
+---
+import { ClientRouter } from "astro:transitions";
+import { navItems, profile, searchEntries } from "../data/site";
+import { musicTracks } from "../data/music";
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const { title = profile.name, description = profile.bio } = Astro.props;
+const pageTitle = title === profile.name ? title : `${title} | ${profile.name}`;
+const currentPath = Astro.url.pathname;
+const isHome = currentPath === "/";
+const isNavActive = (item) =>
+  item.href === "/"
+    ? currentPath === "/"
+    : currentPath === item.href ||
+      currentPath.startsWith(item.href) ||
+      item.match?.some((prefix) => currentPath.startsWith(prefix));
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap"
+      rel="stylesheet"
+    />
+    <ClientRouter />
+    <title>{pageTitle}</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到正文</a>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="返回首页">
+        <span class="brand-mark">PB</span>
+        <span>
+          <strong>{profile.name}</strong>
+          <small>{profile.handle}</small>
+        </span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        {
+          navItems.map((item) => (
+            <a href={item.href} class={isNavActive(item) ? "active" : ""}>
+              {item.label}
+            </a>
+          ))
+        }
+      </nav>
+      <button class="site-search-trigger" type="button" data-search-open aria-label="打开站内搜索">
+        <span>搜索</span>
+        <kbd>Ctrl K</kbd>
+      </button>
+    </header>
+    <div class="search-layer" data-search-layer aria-hidden="true">
+      <button class="search-backdrop" type="button" data-search-close aria-label="关闭搜索"></button>
+      <section class="search-panel" role="dialog" aria-modal="true" aria-label="站内搜索">
+        <div class="search-input-wrap">
+          <span aria-hidden="true"></span>
+          <input data-search-input type="search" placeholder="搜索项目、论文、笔记、成长记录" autocomplete="off" />
+          <button type="button" data-search-close aria-label="关闭搜索">×</button>
+        </div>
+        <div class="search-results" data-search-results></div>
+      </section>
+    </div>
+    <main id="main">
+      <slot />
+    </main>
+    {
+      isHome && (
+        <section class="section page-shell" id="music">
+          <div class="music-player" data-music-player>
+            <div class="music-backdrop" data-music-backdrop></div>
+            <div class="music-note">
+              <div>
+                <p class="eyebrow">Desk player</p>
+                <h2>神之一首</h2>
+                <p>给这个站点留一点声音。代码、论文、笔记之外，也该有几首歌，陪那些慢慢成形的念头。</p>
+              </div>
+              <div>
+                <span data-player-status>准备播放</span>
+                <strong data-note-title>
+                  {musicTracks[0].title} / {musicTracks[0].artist}
+                </strong>
+                <p data-note-text>{musicTracks[0].note}</p>
+              </div>
+              <button class="playlist-toggle" type="button" data-playlist-toggle aria-expanded="false">
+                歌单 <i aria-hidden="true"></i>
+              </button>
+            </div>
+
+            <div class="music-dock">
+              <button class="cover-orbit" type="button" data-dock-play aria-label="播放或暂停">
+                <span></span>
+              </button>
+              <div class="track-stack">
+                <p>Now playing</p>
+                <h3 data-track-title>{musicTracks[0].title}</h3>
+                <span data-track-artist>{musicTracks[0].artist}</span>
+              </div>
+              <div class="dock-controls" aria-label="音乐控制">
+                <button type="button" data-prev aria-label="上一首">
+                  ‹
+                </button>
+                <button class="main" type="button" data-main-play aria-label="播放或暂停">
+                  ▶
+                </button>
+                <button type="button" data-next aria-label="下一首">
+                  ›
+                </button>
+              </div>
+              <div class="dock-progress-wrap">
+                <input class="dock-progress" data-progress type="range" min="0" max="1000" value="0" aria-label="音乐进度" />
+                <div class="dock-time">
+                  <span data-current-time>0:00</span>
+                  <span data-duration>0:00</span>
+                </div>
+              </div>
+              <label class="dock-volume">
+                音量
+                <input data-volume type="range" min="0" max="1" step="0.01" value="0.18" aria-label="音乐音量" />
+              </label>
+            </div>
+
+            <div class="queue-strip" data-playlist>
+              {musicTracks.map((track, index) => (
+                <button type="button" data-track-index={index} class={index === 0 ? "active" : ""}>
+                  <strong>{track.title}</strong>
+                  <span>{track.artist}</span>
+                  <small>{track.note}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      )
+    }
+    <div class="floating-player" data-floating-player transition:name="site-music-player" transition:persist>
+      <a class="floating-disc" href={isHome ? "#music" : "/#music"} aria-label="跳到音乐歌单">
+        <span></span>
+      </a>
+      <div class="floating-track">
+        <strong data-floating-title>{musicTracks[0].title}</strong>
+        <span data-floating-artist>{musicTracks[0].artist}</span>
+      </div>
+      <button class="floating-skip" type="button" data-floating-prev aria-label="上一首">
+        ‹
+      </button>
+      <button class="floating-toggle" type="button" data-floating-play aria-label="播放或暂停">
+        ▶
+      </button>
+      <button class="floating-skip" type="button" data-floating-next aria-label="下一首">
+        ›
+      </button>
+      <input class="floating-progress" data-floating-progress type="range" min="0" max="1000" value="0" aria-label="悬浮音乐进度" />
+      <label class="floating-volume">
+        音量
+        <input data-floating-volume type="range" min="0" max="1" step="0.01" value="0.18" aria-label="悬浮音乐音量" />
+      </label>
+      <audio class="native-audio" data-audio preload="metadata" src={musicTracks[0].src}></audio>
+    </div>
+    <footer class="site-footer">
+      <div>
+        <strong>{profile.name}</strong>
+        <span>公开作品集与长期学习档案</span>
+      </div>
+      <div class="footer-email">
+        <span>{profile.email}</span>
+        <button type="button" data-footer-email-copy data-email={profile.email}>复制邮箱</button>
+      </div>
+    </footer>
+    <script define:vars={{ searchEntries }}>
+      const searchLayer = document.querySelector("[data-search-layer]");
+      const searchInput = document.querySelector("[data-search-input]");
+      const searchResults = document.querySelector("[data-search-results]");
+      const searchOpenButtons = document.querySelectorAll("[data-search-open]");
+      const searchCloseButtons = document.querySelectorAll("[data-search-close]");
+
+      const normalize = (value) => value.toLowerCase().trim();
+      const renderResults = (query = "") => {
+        if (!searchResults) return;
+        const keyword = normalize(query);
+        const entries = keyword
+          ? searchEntries.filter((entry) =>
+              normalize(`${entry.type} ${entry.title} ${entry.summary} ${entry.keywords}`).includes(keyword),
+            )
+          : searchEntries.slice(0, 6);
+        searchResults.innerHTML = entries.length
+          ? entries
+              .slice(0, 8)
+              .map(
+                (entry) => `
+                  <a class="search-result" href="${entry.href}">
+                    <span>${entry.type}</span>
+                    <strong>${entry.title}</strong>
+                    <small>${entry.summary}</small>
+                  </a>
+                `,
+              )
+              .join("")
+          : `<p class="search-empty">没有找到匹配内容，可以换一个关键词。</p>`;
+      };
+
+      const openSearch = () => {
+        searchLayer?.classList.add("is-open");
+        searchLayer?.setAttribute("aria-hidden", "false");
+        renderResults(searchInput instanceof HTMLInputElement ? searchInput.value : "");
+        window.setTimeout(() => {
+          if (searchInput instanceof HTMLInputElement) searchInput.focus();
+        }, 40);
+      };
+      const closeSearch = () => {
+        searchLayer?.classList.remove("is-open");
+        searchLayer?.setAttribute("aria-hidden", "true");
+      };
+
+      searchOpenButtons.forEach((button) => button.addEventListener("click", openSearch));
+      searchCloseButtons.forEach((button) => button.addEventListener("click", closeSearch));
+      searchInput?.addEventListener("input", () => {
+        if (searchInput instanceof HTMLInputElement) renderResults(searchInput.value);
+      });
+      searchResults?.addEventListener("click", (event) => {
+        if (event.target instanceof Element && event.target.closest("a")) closeSearch();
+      });
+      window.addEventListener("keydown", (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+          event.preventDefault();
+          openSearch();
+        }
+        if (event.key === "Escape") closeSearch();
+      });
+
+      const footerEmailCopy = document.querySelector("[data-footer-email-copy]");
+      footerEmailCopy?.addEventListener("click", async () => {
+        const value = footerEmailCopy.getAttribute("data-email") || "";
+        try {
+          await navigator.clipboard.writeText(value);
+          footerEmailCopy.textContent = "已复制";
+        } catch {
+          window.prompt("浏览器拦截了自动复制，请手动复制：", value);
+          footerEmailCopy.textContent = "复制邮箱";
+        }
+        window.setTimeout(() => {
+          footerEmailCopy.textContent = "复制邮箱";
+        }, 1200);
+      });
+    </script>
+    <script define:vars={{ musicTracks }}>
+      (() => {
+        const state = (window.__chuLuoMusic ||= {
+          currentTrack: 0,
+          isSeeking: false,
+          initialized: false,
+          userPaused: false,
+        });
+
+        const getAudio = () => document.querySelector("[data-audio]");
+        const all = (selector) => Array.from(document.querySelectorAll(selector));
+        const one = (selector) => document.querySelector(selector);
+
+        const formatTime = (seconds) => {
+          if (!Number.isFinite(seconds)) return "0:00";
+          const minutes = Math.floor(seconds / 60);
+          const rest = Math.floor(seconds % 60).toString().padStart(2, "0");
+          return `${minutes}:${rest}`;
+        };
+
+        const setStatus = (value) => {
+          all("[data-player-status]").forEach((node) => {
+            node.textContent = value;
+          });
+        };
+
+        const syncButtons = () => {
+          const audio = getAudio();
+          const playing = Boolean(audio && !audio.paused);
+          all("[data-music-player], [data-floating-player]").forEach((node) => {
+            node.classList.toggle("is-playing", playing);
+          });
+          all("[data-main-play], [data-floating-play]").forEach((button) => {
+            button.textContent = playing ? "Ⅱ" : "▶";
+          });
+          setStatus(playing ? "正在播放" : "已暂停");
+        };
+
+        const paintTrack = () => {
+          const audio = getAudio();
+          const track = musicTracks[state.currentTrack];
+          if (!track || !audio) return;
+
+          if (!audio.src.endsWith(track.src)) {
+            audio.src = track.src;
+          }
+
+          all("[data-music-player]").forEach((player) => {
+            player.style.setProperty("--track-accent", track.accent);
+            player.style.setProperty("--track-art", track.art);
+          });
+          all("[data-music-backdrop]").forEach((backdrop) => {
+            backdrop.style.background = track.art;
+          });
+          all("[data-track-title]").forEach((node) => {
+            node.textContent = track.title;
+          });
+          all("[data-track-artist]").forEach((node) => {
+            node.textContent = track.artist;
+          });
+          all("[data-note-title]").forEach((node) => {
+            node.textContent = `${track.title} / ${track.artist}`;
+          });
+          all("[data-note-text]").forEach((node) => {
+            node.textContent = track.note;
+          });
+          all("[data-floating-title]").forEach((node) => {
+            node.textContent = track.title;
+          });
+          all("[data-floating-artist]").forEach((node) => {
+            node.textContent = track.artist;
+          });
+          all("[data-track-index]").forEach((button) => {
+            button.classList.toggle("active", Number(button.dataset.trackIndex) === state.currentTrack);
+          });
+        };
+
+        const syncProgress = () => {
+          const audio = getAudio();
+          if (!audio || state.isSeeking) return;
+          const ratio = audio.duration ? audio.currentTime / audio.duration : 0;
+          const value = String(Math.round(ratio * 1000));
+          all("[data-progress], [data-floating-progress]").forEach((input) => {
+            if (input instanceof HTMLInputElement) {
+              input.value = value;
+              input.style.setProperty("--progress", `${ratio * 100}%`);
+            }
+          });
+          all("[data-current-time]").forEach((node) => {
+            node.textContent = formatTime(audio.currentTime);
+          });
+          all("[data-duration]").forEach((node) => {
+            node.textContent = formatTime(audio.duration);
+          });
+        };
+
+        const play = async () => {
+          const audio = getAudio();
+          if (!audio) return;
+          try {
+            const volumeInput = one("[data-volume], [data-floating-volume]");
+            audio.volume = Number(volumeInput?.value || 0.18);
+            state.userPaused = false;
+            await audio.play();
+            syncButtons();
+          } catch {
+            state.userPaused = true;
+            syncButtons();
+            setStatus("点击播放");
+          }
+        };
+
+        const pause = () => {
+          const audio = getAudio();
+          if (!audio) return;
+          state.userPaused = true;
+          audio.pause();
+          syncButtons();
+        };
+
+        const togglePlay = () => {
+          const audio = getAudio();
+          if (!audio) return;
+          audio.paused ? play() : pause();
+        };
+
+        const changeTrack = (nextIndex, shouldPlay = true) => {
+          const audio = getAudio();
+          state.currentTrack = (nextIndex + musicTracks.length) % musicTracks.length;
+          paintTrack();
+          syncProgress();
+          if (shouldPlay && audio) play();
+        };
+
+        const bindOnce = (element, eventName, handler) => {
+          if (!element || element.dataset.musicBound === "true") return;
+          element.dataset.musicBound = "true";
+          element.addEventListener(eventName, handler);
+        };
+
+        const bindControls = () => {
+          paintTrack();
+          syncProgress();
+          syncButtons();
+
+          all("[data-main-play], [data-dock-play], [data-floating-play]").forEach((button) => {
+            bindOnce(button, "click", togglePlay);
+          });
+          all("[data-prev], [data-floating-prev]").forEach((button) => {
+            bindOnce(button, "click", () => changeTrack(state.currentTrack - 1, !getAudio()?.paused));
+          });
+          all("[data-next], [data-floating-next]").forEach((button) => {
+            bindOnce(button, "click", () => changeTrack(state.currentTrack + 1, !getAudio()?.paused));
+          });
+          all("[data-track-index]").forEach((button) => {
+            bindOnce(button, "click", () => changeTrack(Number(button.dataset.trackIndex), true));
+          });
+          all("[data-progress], [data-floating-progress]").forEach((input) => {
+            if (!(input instanceof HTMLInputElement) || input.dataset.musicBound === "true") return;
+            input.dataset.musicBound = "true";
+            input.addEventListener("input", () => {
+              state.isSeeking = true;
+              const ratio = Number(input.value) / 1000;
+              all("[data-progress], [data-floating-progress]").forEach((other) => {
+                if (other instanceof HTMLInputElement) {
+                  other.value = input.value;
+                  other.style.setProperty("--progress", `${ratio * 100}%`);
+                }
+              });
+            });
+            input.addEventListener("change", () => {
+              const audio = getAudio();
+              if (audio?.duration) audio.currentTime = (Number(input.value) / 1000) * audio.duration;
+              state.isSeeking = false;
+              syncProgress();
+            });
+          });
+          all("[data-volume], [data-floating-volume]").forEach((input) => {
+            if (!(input instanceof HTMLInputElement) || input.dataset.musicBound === "true") return;
+            input.dataset.musicBound = "true";
+            input.addEventListener("input", () => {
+              const value = Number(input.value);
+              const audio = getAudio();
+              if (audio) audio.volume = value;
+              all("[data-volume], [data-floating-volume]").forEach((other) => {
+                if (other instanceof HTMLInputElement) other.value = String(value);
+              });
+            });
+          });
+
+          const playlistToggle = one("[data-playlist-toggle]");
+          bindOnce(playlistToggle, "click", () => {
+            const player = one("[data-music-player]");
+            const open = !player?.classList.contains("is-playlist-open");
+            player?.classList.toggle("is-playlist-open", open);
+            playlistToggle?.setAttribute("aria-expanded", String(open));
+          });
+
+          const audio = getAudio();
+          if (audio && audio.dataset.musicBound !== "true") {
+            audio.dataset.musicBound = "true";
+            audio.volume = 0.18;
+            audio.addEventListener("loadedmetadata", syncProgress);
+            audio.addEventListener("timeupdate", syncProgress);
+            audio.addEventListener("play", syncButtons);
+            audio.addEventListener("pause", syncButtons);
+            audio.addEventListener("ended", () => changeTrack(state.currentTrack + 1, true));
+          }
+
+          if (!state.initialized) {
+            state.initialized = true;
+            window.setTimeout(() => {
+              if (!state.userPaused) play();
+            }, 500);
+          }
+        };
+
+        bindControls();
+        document.addEventListener("astro:page-load", bindControls);
+      })();
+    </script>
+    <script>
+      (() => {
+        if (window.__chuLuoHeroMotionSetup) return;
+        window.__chuLuoHeroMotionSetup = true;
+
+        const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+        let cleanupMotion = null;
+
+        const initHeroMotion = () => {
+          if (cleanupMotion) {
+            cleanupMotion();
+            cleanupMotion = null;
+          }
+
+          const heroStage = document.querySelector(".hero-stage");
+          const fluidCanvas = document.querySelector("#fluid-canvas");
+          if (!heroStage || !(fluidCanvas instanceof HTMLCanvasElement) || motionQuery.matches) return;
+
+          const context = fluidCanvas.getContext("2d");
+          if (!context) return;
+
+          const sheets = Array.from(heroStage.querySelectorAll(".light-sheet"));
+          const quickTiles = Array.from(document.querySelectorAll(".quick-tile"));
+          const colors = [
+            [78, 205, 196],
+            [133, 110, 217],
+            [1, 113, 227],
+            [193, 148, 51],
+          ];
+
+          let width = 0;
+          let height = 0;
+          let frame = 0;
+          let rafId = 0;
+          let lastDrop = 0;
+          const pointer = { x: 0.5, y: 0.42 };
+          const smooth = { x: 0.5, y: 0.42 };
+          const drops = [];
+          const removers = [];
+
+          const on = (target, eventName, handler) => {
+            target.addEventListener(eventName, handler);
+            removers.push(() => target.removeEventListener(eventName, handler));
+          };
+
+          const resizeCanvas = () => {
+            const rect = heroStage.getBoundingClientRect();
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            width = Math.max(1, Math.round(rect.width));
+            height = Math.max(1, Math.round(rect.height));
+            fluidCanvas.width = Math.round(width * dpr);
+            fluidCanvas.height = Math.round(height * dpr);
+            fluidCanvas.style.width = `${width}px`;
+            fluidCanvas.style.height = `${height}px`;
+            context.setTransform(dpr, 0, 0, dpr, 0, 0);
+          };
+
+          const addDrop = (x, y) => {
+            const now = performance.now();
+            if (now - lastDrop < 64) return;
+            lastDrop = now;
+            drops.push({
+              x,
+              y,
+              life: 1,
+              radius: 18 + Math.random() * 18,
+              color: colors[Math.floor(Math.random() * colors.length)],
+            });
+            if (drops.length > 12) drops.shift();
+          };
+
+          const movePointer = (clientX, clientY) => {
+            const rect = heroStage.getBoundingClientRect();
+            pointer.x = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+            pointer.y = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+            addDrop(pointer.x, pointer.y);
+          };
+
+          const paintOrb = (x, y, radius, color, alpha) => {
+            const gradient = context.createRadialGradient(x, y, 0, x, y, radius);
+            gradient.addColorStop(0, `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`);
+            gradient.addColorStop(0.42, `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha * 0.28})`);
+            gradient.addColorStop(1, `rgba(${color[0]}, ${color[1]}, ${color[2]}, 0)`);
+            context.fillStyle = gradient;
+            context.beginPath();
+            context.arc(x, y, radius, 0, Math.PI * 2);
+            context.fill();
+          };
+
+          const draw = () => {
+            frame += 0.012;
+            smooth.x += (pointer.x - smooth.x) * 0.055;
+            smooth.y += (pointer.y - smooth.y) * 0.055;
+
+            context.clearRect(0, 0, width, height);
+            context.globalCompositeOperation = "source-over";
+
+            const x = smooth.x * width;
+            const y = smooth.y * height;
+            paintOrb(x, y, Math.min(width, height) * 0.34, colors[0], 0.16);
+            paintOrb(
+              x + Math.cos(frame * 1.7) * 90,
+              y + Math.sin(frame * 1.2) * 62,
+              Math.min(width, height) * 0.22,
+              colors[1],
+              0.1,
+            );
+
+            for (let index = drops.length - 1; index >= 0; index -= 1) {
+              const drop = drops[index];
+              paintOrb(drop.x * width, drop.y * height, drop.radius, drop.color, 0.24 * drop.life);
+              drop.radius += 7.5;
+              drop.life *= 0.93;
+              if (drop.life < 0.035) drops.splice(index, 1);
+            }
+
+            sheets.forEach((sheet, index) => {
+              const depth = index + 1;
+              const offsetX = (smooth.x - 0.5) * 28 * depth;
+              const offsetY = (smooth.y - 0.5) * 20 * depth;
+              sheet.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0)`;
+            });
+
+            rafId = requestAnimationFrame(draw);
+          };
+
+          on(heroStage, "pointermove", (event) => movePointer(event.clientX, event.clientY));
+          on(heroStage, "pointerleave", () => {
+            pointer.x = 0.5;
+            pointer.y = 0.42;
+          });
+          on(window, "resize", resizeCanvas);
+
+          quickTiles.forEach((tile) => {
+            on(tile, "pointermove", (event) => {
+              const rect = tile.getBoundingClientRect();
+              const x = (event.clientX - rect.left) / rect.width;
+              const y = (event.clientY - rect.top) / rect.height;
+              tile.style.setProperty("--glow-x", `${x * 100}%`);
+              tile.style.setProperty("--glow-y", `${y * 100}%`);
+              tile.style.setProperty("--tilt-x", `${(0.5 - y) * 7}deg`);
+              tile.style.setProperty("--tilt-y", `${(x - 0.5) * 8}deg`);
+            });
+            on(tile, "pointerleave", () => {
+              tile.style.setProperty("--tilt-x", "0deg");
+              tile.style.setProperty("--tilt-y", "0deg");
+              tile.style.setProperty("--glow-x", "50%");
+              tile.style.setProperty("--glow-y", "50%");
+            });
+          });
+
+          resizeCanvas();
+          rafId = requestAnimationFrame(draw);
+
+          cleanupMotion = () => {
+            cancelAnimationFrame(rafId);
+            removers.forEach((remove) => remove());
+            sheets.forEach((sheet) => {
+              sheet.style.transform = "";
+            });
+          };
+        };
+
+        initHeroMotion();
+        document.addEventListener("astro:page-load", initHeroMotion);
+      })();
+    </script>
+  </body>
+</html>

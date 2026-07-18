@@ -1,0 +1,126 @@
+---
+import DiscussionBox from "../../components/DiscussionBox.astro";
+import { projects } from "../../data/site";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { slugify } from "../../utils/slug";
+
+export function getStaticPaths() {
+  return projects.map((project) => ({
+    params: { slug: slugify(project.title) },
+    props: { project },
+  }));
+}
+
+const { project } = Astro.props;
+const projectIndex = projects.findIndex((item) => item.title === project.title);
+const coverClasses = ["cover-teal", "cover-cyan", "cover-blue", "cover-dark", "cover-gold"];
+const coverClass = coverClasses[Math.max(projectIndex, 0) % coverClasses.length];
+const tocItems = [
+  { id: "problem", label: "问题现场" },
+  { id: "role", label: "我的工作" },
+  ...project.caseSections.map((section, index) => ({ id: `section-${index}`, label: section.kicker })),
+  { id: "next", label: "下一步" },
+  { id: "discussion", label: "讨论" },
+];
+---
+
+<BaseLayout title={project.title} description={project.summary}>
+  <div class="reading-progress" data-reading-progress></div>
+  <div class="post-page diary-post">
+    <a class="post-back-link" href="/projects/">返回项目</a>
+
+    <article class={`post-hero ${coverClass}`}>
+      <div class="post-hero-content">
+        <span class="post-category">Project Case Study</span>
+        <h1>{project.title}</h1>
+        <p>{project.summary}</p>
+        <div class="post-meta">
+          <span>{project.year}</span>
+          <span>{project.status}</span>
+          <span>{project.origin}</span>
+        </div>
+      </div>
+    </article>
+
+    <section class="post-layout">
+      <article class="post-prose">
+        <p id="problem" class="post-lead">{project.problem}</p>
+
+        <section id="role">
+          <h2>我负责的部分</h2>
+          <p>{project.contribution}</p>
+          <p>{project.evidence}</p>
+        </section>
+
+        {
+          project.caseSections.map((section, index) => (
+            <section id={`section-${index}`}>
+              <p class="section-kicker">{section.kicker}</p>
+              <h2>{section.title}</h2>
+              <p>{section.body}</p>
+              <ul>
+                {section.points.map((point) => (
+                  <li>{point}</li>
+                ))}
+              </ul>
+            </section>
+          ))
+        }
+
+        <section id="next">
+          <p class="section-kicker">Next</p>
+          <h2>接下来要补上的证据</h2>
+          <p>{project.next}</p>
+        </section>
+      </article>
+
+      <aside class="toc-sidebar">
+        <div class="toc-sticky">
+          <p>Contents</p>
+          <nav aria-label="项目目录">
+            {tocItems.map((item) => <a href={`#${item.id}`}>{item.label}</a>)}
+          </nav>
+          <div class="toc-metrics">
+            {project.metrics.map((metric) => (
+              <div>
+                <span>{metric.label}</span>
+                <strong>{metric.value}</strong>
+              </div>
+            ))}
+          </div>
+          <div class="toc-tags">{project.tags.map((tag) => <span>{tag}</span>)}</div>
+          <details class="toc-details">
+            <summary>资料来源</summary>
+            <ul>{project.sourceNotes.map((note) => <li>{note}</li>)}</ul>
+          </details>
+          <details class="toc-details">
+            <summary>还在追的问题</summary>
+            <ol>{project.openQuestions.map((question) => <li>{question}</li>)}</ol>
+          </details>
+        </div>
+      </aside>
+    </section>
+
+    <section id="discussion" class="diary-discussion-shell">
+      <DiscussionBox
+        storageKey={`discussion-project-${slugify(project.title)}`}
+        title="对这个项目提建议"
+        intro="这里更适合指出项目展示里的不足、可以补充的证据、技术路线的风险，或者你觉得值得继续加强的地方。"
+        labels={["提升方向", "技术问题", "展示建议", "合作想法"]}
+        placeholder="比如：这个项目还缺什么证据？哪个技术点可以讲得更清楚？你觉得下一步应该先做什么？"
+      />
+    </section>
+  </div>
+
+  <script>
+    const progress = document.querySelector("[data-reading-progress]");
+    const updateProgress = () => {
+      if (!(progress instanceof HTMLElement)) return;
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      const value = max > 0 ? window.scrollY / max : 0;
+      progress.style.transform = `scaleX(${Math.min(1, Math.max(0, value))})`;
+    };
+    updateProgress();
+    document.addEventListener("scroll", updateProgress, { passive: true });
+  </script>
+</BaseLayout>
